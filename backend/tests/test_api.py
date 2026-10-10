@@ -29,6 +29,19 @@ def test_limits_never_expose_keys(settings):
     assert response.headers["cache-control"] == "no-store"
 
 
+def test_usage_tracks_accepted_requests(client):
+    before = client.get('/api/usage')
+    assert before.status_code == 200
+    assert before.json()['used_today'] == 0
+    response = client.post('/api/audits', json={'repository_url': URL})
+    assert response.status_code == 202
+    after = client.get('/api/usage')
+    assert after.status_code == 200
+    assert after.json()['used_today'] == 1
+    assert after.json()['active_audits'] == 1
+    assert after.headers['cache-control'] == 'no-store'
+
+
 def test_create_and_token_access(client):
     response = client.post("/api/audits", json={"repository_url": URL})
     assert response.status_code == 202
