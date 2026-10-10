@@ -82,7 +82,7 @@ def markdown(report):
         if not items:
             lines.append("該当指摘なし（安全の保証ではありません）。")
         for item in items:
-            lines += ["", f"### {plain(item['title'])}", f"- 重大度：{SEVERITIES[item['severity']]}", f"- 検出元：{', '.join(item.get('sources', [item['source'])))}",
+            lines += ["", f"### {plain(item['title'])}", f"- 重大度：{SEVERITIES[item['severity']]}", f"- 検出元：{', '.join(item.get('sources', [item['source']]))}",
                       f"- 場所：{plain(item['file'])} / {'ファイル全体（特定行ではありません）' if item.get('evidence_scope') == 'file' else str(item['start_line']) + '-' + str(item['end_line'])}", f"- コードリンク：{item['github_url']}",
                       f"- AI確信度：{item['confidence'] if item['confidence'] is not None else '対象外'}", "", "**危険な理由**", plain(item["reason"]), "", "**想定される影響**", plain(item["impact"]), "", "**修正方法**", plain(item["remediation"]), "", "**マスク済み根拠**", plain(item["evidence"])]
     lines += ["", "## 分析対象ファイル"] + [f"- {plain(file)}" for file in report["files"]]
