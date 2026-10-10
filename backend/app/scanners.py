@@ -75,6 +75,26 @@ def make_finding(repo, source, rule, severity, category, title, file, start, end
                    evidence_verified=True, github_url=f"{repo.url}/blob/{repo.sha}/{quote(file, safe='/')}#L{start}-L{end}").model_dump()
 
 
+def file_configuration_finding(repo, rule, severity, file, secrets):
+    # Only trusted absence rules whose absence we can independently verify.
+    instruction = {"AVD-DS-0002": "USER", "DS002": "USER",
+                   "AVD-DS-0026": "HEALTHCHECK", "DS026": "HEALTHCHECK"}.get(rule)
+    if not instruction or file not in repo.files or Path(file).name.lower() != "dockerfile":
+        return None
+    code = repo.files[file]
+    if re.search(r"(?im)^\\s*" + instruction + r"\\b", code):
+        return None
+    values = dict(source="trivy", rule_id=rule, severity=severity, category="configuration",
+                  title=f"Dockerfileに{instruction}設定がありません", file=file,
+                  start_line=1, end_line=max(1, len(code.splitlines())), evidence_scope="file",
+                  evidence=f"ファイル全体を確認：{instruction}命令なし（特定行の指摘ではありません）",
+                  reason=f"Trivyの欠如ルールと照合し、ファイル全体に{instruction}命令がないことを確認しました。ベースイメージや実行環境の設定は別途確認が必要です。",
+                  impact="実効ユーザーや稼働状態の確認が不足する可能性があります。悪用可能性は未確認です。",
+                  remediation=f"{instruction}の明示設定を検討し、ベースイメージとCloud Run側の設定も確認してください。",
+                  evidence_verified=True, github_url=f"{repo.url}/blob/{repo.sha}/" + __import__("urllib.parse", fromlist=["quote"]).quote(file, safe="/"))
+    return Finding.model_validate(scrub(values, secrets)).model_dump()
+
+
 async def scan(repo: Repository, work: Path, settings: Settings) -> tuple[list[dict], list[dict], list[str]]:
     findings, statuses, secrets = [], [], []
     root = work / "scan-source"
@@ -95,7 +115,7 @@ async def scan(repo: Repository, work: Path, settings: Settings) -> tuple[list[d
     rules = Path(__file__).parent / "rules" / "security.yml"
     for tool, binary in [("gitleaks", settings.gitleaks_bin), ("semgrep", settings.semgrep_bin), ("trivy", settings.trivy_bin)]:
         executable = shutil.which(binary)
-        status = {"tool": tool, "status": "failed", "message": "", "scanned_files": [], "unscanned_files": [], "rule_scope": ""}
+        status = {"tool": tool, "status": "failed", "message": "", "scanned_files": [], "unscanned_files": [], "rule_scope": "", "rejected_findings": 0, "location_diagnostics": []}
         statuses.append(status)
         if not executable:
             status.update(status="unavailable", message="ツール未導入のため未検査です")
@@ -150,6 +170,8 @@ async def scan(repo: Repository, work: Path, settings: Settings) -> tuple[list[d
                         version = str(item.get("InstalledVersion", ""))
                         line = next((i for i, text in enumerate(lines, 1) if package and package in text and version and re.search(r'(?<![\w.])' + re.escape(version) + r'(?![\w.])', '\n'.join(lines[i-1:i+7]))), 0)
                         if not line:
+                            status["rejected_findings"] += 1
+                            status["location_diagnostics"].append({"rule_id": mask(rule, secrets)[:200], "reason": "dependency_location_unverified"})
                             status["message"] = "行番号の根拠を確認できない依存検出はレポートから除外しました"
                             status["status"] = "partial"
                             continue
@@ -161,9 +183,15 @@ async def scan(repo: Repository, work: Path, settings: Settings) -> tuple[list[d
                 if severity not in {"critical", "high", "medium", "low", "info"}:
                     severity = "info"
                 finding = make_finding(repo, tool, rule, severity, category, title, relative_file(file, root), start, end, reason, impact, remediation, secrets)
+                if not finding and tool == "trivy" and start == 0 and end == 0:
+                    finding = file_configuration_finding(repo, rule, severity, relative_file(file, root), secrets)
                 if finding:
+                    if tool == "trivy" and category == "confirmed":
+                        finding["evidence_scope"] = "dependency"
                     findings.append(finding)
                 else:
+                    status["rejected_findings"] += 1
+                    status["location_diagnostics"].append({"rule_id": mask(rule, secrets)[:200], "reason": "file_or_line_unverified"})
                     status.update(status="partial", message="実在パス・行番号の根拠を確認できない検出を除外しました")
             if status["status"] == "failed":
                 status.update(status="completed", message="設定されたルールで検査を実行しました")

@@ -1,4 +1,5 @@
 import json
+import hashlib
 import re
 from urllib.parse import quote
 
@@ -43,6 +44,8 @@ def segments(files: dict[str, str], maximum: int) -> list[dict]:
             block.append(line)
             size += len(line)
         result.append({"id": f"{file}:{start}-{len(lines)}", "file": file, "start_line": start, "end_line": len(lines), "code": "".join(block)})
+    for index, part in enumerate(result, 1):
+        part["id"] = f"s{index:06d}"
     return result
 
 
@@ -113,6 +116,14 @@ class Gemini:
                 await client.aclose()
 
 
+def coverage_diagnostic(stage, expected, actual):
+    returned = set(actual)
+    return {"stage": stage, "expected_count": len(expected), "returned_count": len(actual),
+            "missing_ids": sorted(expected - returned),
+            "unexpected_id_hashes": sorted(hashlib.sha256(value.encode()).hexdigest()[:16] for value in returned - expected),
+            "duplicate_count": len(actual) - len(returned)}
+
+
 def validate_finding(item, repo: Repository, masked: dict, secrets: list[str]) -> dict | None:
     if item.file not in masked or item.end_line < item.start_line:
         return None
@@ -134,26 +145,28 @@ def validate_finding(item, repo: Repository, masked: dict, secrets: list[str]) -
 
 async def analyze(repo: Repository, static: list[dict], secrets: list[str], settings: Settings, gemini=None):
     findings, seen, rejected, summaries = [], set(), 0, []
-    metadata = {"status": "unavailable", "message": "Geminiキー未設定のためAI分析は未実行です", "analyzed_files": [], "unanalysed_files": sorted(repo.files), "tokens": 0, "calls": 0, "cross_file_completed": False, "rejected_findings": 0}
+    metadata = {"status": "unavailable", "message": "Geminiキー未設定のためAI分析は未実行です", "analyzed_files": [], "unanalysed_files": sorted(repo.files), "tokens": 0, "calls": 0, "cross_file_completed": False, "rejected_findings": 0, "coverage_diagnostics": [], "segment_manifest": []}
     if not settings.ai_enabled or not settings.gemini_api_key.get_secret_value():
         return findings, metadata
     masked = {file: mask(text, secrets) for file, text in repo.files.items()}
     engine = gemini or Gemini(settings)
     try:
         parts = segments(masked, settings.ai_chunk_chars)
+        metadata["segment_manifest"] = [{k: part[k] for k in ("id", "file", "start_line", "end_line")} for part in parts]
         groups = batches(parts, settings.ai_chunk_chars)
         if len(groups) + 1 > settings.ai_max_calls:
             raise AuditError("全ファイルの分析に必要なAI回数が上限を超えるため、AI処理を開始しません")
         expected = {part["id"] for part in parts}
         structure = [{"file": file, "lines": len(text.splitlines())} for file, text in masked.items()]
         for group in groups:
-            prompt = json.dumps({"task": "全セグメントのコードを分析し、リポジトリ構造・呼び出し関係・認証などの処理を要約してください", "structure": structure, "segments": group, "static_findings": static}, ensure_ascii=False)
+            prompt = json.dumps({"task": "全セグメントのコードを分析し、リポジトリ構造・呼び出し関係・認証などの処理を要約してください", "expected_segment_ids": [part["id"] for part in group], "structure": structure, "segments": group, "static_findings": static}, ensure_ascii=False)
             result = await engine.request(prompt)
             group_ids = {part["id"] for part in group}
+            metadata["coverage_diagnostics"].append(coverage_diagnostic("batch", group_ids, result.analyzed_segments))
             if set(result.analyzed_segments) != group_ids:
                 raise AuditError("AI応答の分析対象に漏れがあるため未完了です")
             seen.update(group_ids)
-            summaries.append({"segments": list(group_ids), "summary": mask(result.summary, secrets)})
+            summaries.append({"segments": sorted(group_ids), "summary": mask(result.summary, secrets)})
             for item in result.findings:
                 verified = validate_finding(item, repo, masked, secrets)
                 if verified:
@@ -161,7 +174,8 @@ async def analyze(repo: Repository, static: list[dict], secrets: list[str], sett
                 else:
                     rejected += 1
         # All source segments were read. Integration reconciles summaries + findings across files.
-        integration = await engine.request(json.dumps({"task": "各分割分析を横断的に統合し、ファイル間の呼び出し・認証認可・入力・セッション・秘密管理と静的結果を照合してください。analyzed_segmentsに全IDを列挙してください。根拠を確かめられない指摘は追加しないでください", "structure": structure, "analysis": summaries, "static_findings": static, "verified_findings": findings}, ensure_ascii=False))
+        integration = await engine.request(json.dumps({"task": "各分割分析を横断的に統合し、ファイル間の呼び出し・認証認可・入力・セッション・秘密管理と静的結果を照合してください。analyzed_segmentsに全IDを列挙してください。根拠を確かめられない指摘は追加しないでください", "expected_segment_ids": sorted(expected), "structure": structure, "analysis": summaries, "static_findings": static, "verified_findings": findings}, ensure_ascii=False))
+        metadata["coverage_diagnostics"].append(coverage_diagnostic("integration", expected, integration.analyzed_segments))
         if set(integration.analyzed_segments) != expected:
             raise AuditError("横断統合の分析範囲を確認できません")
         for item in integration.findings:
@@ -170,7 +184,7 @@ async def analyze(repo: Repository, static: list[dict], secrets: list[str], sett
                 findings.append(verified)
             else:
                 rejected += 1
-        metadata.update(status="completed" if rejected == 0 else "partial", message="全対象ファイルの分割分析と横断統合を実行しました" if rejected == 0 else "根拠不一致のAI指摘を除外したため部分監査です", cross_file_completed=True, summary=mask(integration.summary, secrets))
+        metadata.update(status="completed", message="全対象ファイルの分割分析と横断統合を実行しました。根拠不一致の指摘は除外件数に記録します", cross_file_completed=True, summary=mask(integration.summary, secrets))
     except AuditError as exc:
         metadata.update(status="partial" if seen else "failed", message=str(exc))
     covered = {part["file"] for part in locals().get("parts", []) if all(p["id"] in seen for p in locals().get("parts", []) if p["file"] == part["file"])}

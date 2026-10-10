@@ -37,3 +37,15 @@ def test_tool_failure_never_success(settings, tmp_path, monkeypatch):
     monkeypatch.setattr('app.scanners.run_process', fail)
     findings, tools, _ = asyncio.run(scan(repo, tmp_path, settings))
     assert not findings and all(tool['status'] == 'failed' for tool in tools)
+
+def test_filewide_absence_requires_independent_evidence(tmp_path):
+    from app.scanners import file_configuration_finding
+    target = Repository('https://github.com/a/b', 'a' * 40, tmp_path,
+                        {'Dockerfile': 'FROM node:22-alpine\nCMD ["node", "app.js"]\n'}, [], 10, 10)
+    item = file_configuration_finding(target, 'AVD-DS-0002', 'high', 'Dockerfile', [])
+    assert item['evidence_scope'] == 'file' and item['evidence_verified']
+    assert '#L' not in item['github_url']
+    assert file_configuration_finding(target, 'UNKNOWN', 'high', 'Dockerfile', []) is None
+    assert file_configuration_finding(target, 'AVD-DS-0002', 'high', '../Dockerfile', []) is None
+    target.files['Dockerfile'] += 'USER node\n'
+    assert file_configuration_finding(target, 'AVD-DS-0002', 'high', 'Dockerfile', []) is None

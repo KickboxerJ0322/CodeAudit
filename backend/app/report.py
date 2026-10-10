@@ -33,6 +33,9 @@ def markdown(report):
              f"- 分析対象：{report['analyzed_file_count']}ファイル / 除外：{report['excluded_file_count']}ファイル", "", plain(report["disclaimer"]), "", "## 監査範囲"]
     for tool in report["tools"]:
         lines.append(f"- {tool['tool']}：{tool['status']} / {plain(tool['message'])} / {plain(tool['rule_scope'])}")
+    lines.append(f"- 根拠不一致で除外したAI指摘：{report['ai'].get('rejected_findings', 0)}件（分析完了状況とは別集計）")
+    for diagnostic in report["ai"].get("coverage_diagnostics", []):
+        lines.append(f"- 分析範囲照合：{diagnostic['stage']} / 不足ID：{plain(', '.join(diagnostic['missing_ids']))} / 不明ID：{len(diagnostic['unexpected_id_hashes'])}件")
     lines += [f"- Gemini：{report['ai']['status']} / {plain(report['ai']['message'])}", f"- 横断統合：{'実行済み' if report['ai']['cross_file_completed'] else '未完了'}", "", "## 重大度別件数"]
     lines += [f"- {label}：{report['severity_counts'][key]}件" for key, label in SEVERITIES.items()]
     for category, label in CATEGORIES.items():
@@ -42,7 +45,7 @@ def markdown(report):
             lines.append("該当指摘なし（安全の保証ではありません）。")
         for item in items:
             lines += ["", f"### {plain(item['title'])}", f"- 重大度：{SEVERITIES[item['severity']]}", f"- 検出元：{item['source']}",
-                      f"- 場所：{plain(item['file'])}:{item['start_line']}-{item['end_line']}", f"- コードリンク：{item['github_url']}",
+                      f"- 場所：{plain(item['file'])} / {'ファイル全体（特定行ではありません）' if item.get('evidence_scope') == 'file' else str(item['start_line']) + '-' + str(item['end_line'])}", f"- コードリンク：{item['github_url']}",
                       f"- AI確信度：{item['confidence'] if item['confidence'] is not None else '対象外'}", "", "**危険な理由**", plain(item["reason"]), "", "**想定される影響**", plain(item["impact"]), "", "**修正方法**", plain(item["remediation"]), "", "**マスク済み根拠**", plain(item["evidence"])]
     lines += ["", "## 分析対象ファイル"] + [f"- {plain(file)}" for file in report["files"]]
     lines += ["", "## 除外ファイル"] + [f"- {plain(item['file'])}：{plain(item['reason'])}" for item in report["excluded_files"]]

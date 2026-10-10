@@ -37,6 +37,7 @@ class Finding(BaseModel):
     impact: str = Field(max_length=2000)
     remediation: str = Field(max_length=3000)
     confidence: float | None = Field(default=None, ge=0, le=1)
+    evidence_scope: Literal["line", "file", "dependency"] = "line"
     evidence_verified: bool = False
     github_url: str = ""
 

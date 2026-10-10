@@ -141,3 +141,32 @@ def test_generation_schema_keeps_title_field_and_local_bounds():
     values['title'] = 'x' * 301
     with pytest.raises(ValidationError):
         AIFinding.model_validate(values)
+
+def test_rejected_finding_does_not_mean_unanalysed_code(settings, tmp_path):
+    settings.gemini_api_key = SecretStr('test-key')
+    class Rejected(FakeGemini):
+        async def request(self, prompt):
+            result = await super().request(prompt)
+            result.findings = [finding(evidence='invented')]
+            return result
+    _, metadata = asyncio.run(analyze(repo(tmp_path), [], [], settings, Rejected()))
+    assert metadata['status'] == 'completed'
+    assert metadata['cross_file_completed'] and metadata['rejected_findings'] == 2
+    assert metadata['unanalysed_files'] == []
+
+
+def test_coverage_diagnostics_do_not_store_unknown_text(settings, tmp_path):
+    settings.gemini_api_key = SecretStr('test-key')
+    class WrongIntegration(FakeGemini):
+        async def request(self, prompt):
+            result = await super().request(prompt)
+            if 'analysis' in json.loads(prompt):
+                result.analyzed_segments = ['untrusted-secret-text']
+            return result
+    _, metadata = asyncio.run(analyze(repo(tmp_path), [], [], settings, WrongIntegration()))
+    assert metadata['status'] == 'partial' and not metadata['cross_file_completed']
+    assert metadata['unanalysed_files'] == []
+    diagnostic = metadata['coverage_diagnostics'][-1]
+    assert diagnostic['missing_ids'] and diagnostic['unexpected_id_hashes']
+    assert 'untrusted-secret-text' not in json.dumps(metadata)
+    assert all(p['id'].startswith('s') for p in metadata['segment_manifest'])
