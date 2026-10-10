@@ -67,3 +67,13 @@ rain-mapの全対象11ファイルをGemini実APIで分析しました（6呼び
 ce0e971で実際のTrivyルールIDに対応し、Geminiの構造化JSONスキーマでanalyzed_segmentsの値を送信済みIDのenumへ制限。回答後の完全一致検証は維持。GitHub CIと手動デプロイ38045132486は成功。更新後UI・health成功。
 
 最新版の実再監査は429（利用者の1日3回上限）で受付拒否され、未実施。一時的な追加1回の許可待ちです。日次予算と利用回数の両方を無断で緩和しません。
+
+## Phase 10実再検証完了（2026-10-10、ce0e971）
+
+利用者の明示許可で回数上限を一時的に4へ変更。追加1回の受付後すぐ3へ復元し、公開limitsでdaily_limit=3を確認。日次AI予算は5 USDを維持。
+
+rain-map（SHA 5ce977dbd46a6b416a2c0e450192e1837fb44f49）の実監査はcompletedとなりました。対象11ファイル・除外1、12セグメントすべてと横断統合のID照合が一致。不足・不明IDとも0、未分析ファイル0。Gemini6呼び出し・55,699トークン、cross_file_completed=true。
+
+Gitleaks・Semgrep・Trivyは設定された検査範囲でcompleted。TrivyのUSER／HEALTHCHECK欠如2件は独立検証してfile単位の根拠で採用し、依存脆弱性3件はdependency区分。Semgrepは同梱7ルールの対応言語が対象、コンテナ実体・Git履歴・除外ファイルは未検査で、この範囲説明は維持。
+
+レポート採用16件（critical3/high1/medium11/low1）。根拠不一致のAI指摘6件は除外して別集計。実在コードの位置検証は悪用可能性を証明するものではありません。トークンなし／不正404、正しいトークンでJSON・Markdown取得を再確認。監査完了は安全性保証ではありません。
