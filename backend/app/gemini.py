@@ -157,8 +157,8 @@ def validate_finding(item, repo: Repository, masked: dict, secrets: list[str]) -
     if "innerhtml" in (item.title + item.reason + item.remediation + item.evidence).lower():
         # Suppress only plain constant string/template literals without interpolation.
         # Expressions and variable data remain reviewable; this is not a full taint analysis.
-        statement = "\\n".join(lines[item.start_line - 1:item.end_line])
-        constant = re.search(r"\\.innerHTML\\s*=\\s*([\\x27\\x22\\x60])([\\s\\S]*?)\\1\\s*;?\\s*$", statement)
+        statement = "\n".join(lines[item.start_line - 1:item.end_line])
+        constant = re.search(r"\.innerHTML\s*=\s*(['\"`])([\s\S]*?)\1\s*;?\s*$", statement)
         if constant and (constant.group(1) != "`" or "${" not in constant.group(2)):
             return None
     # Code existence verifies location, not exploitability: AI alone is not confirmation.
