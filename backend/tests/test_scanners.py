@@ -49,3 +49,11 @@ def test_filewide_absence_requires_independent_evidence(tmp_path):
     assert file_configuration_finding(target, 'AVD-DS-0002', 'high', '../Dockerfile', []) is None
     target.files['Dockerfile'] += 'USER node\n'
     assert file_configuration_finding(target, 'AVD-DS-0002', 'high', 'Dockerfile', []) is None
+
+def test_actual_trivy_absence_rule_ids(tmp_path):
+    from app.scanners import file_configuration_finding
+    target = Repository('https://github.com/a/b', 'a' * 40, tmp_path,
+                        {'Dockerfile': 'FROM node:22-alpine\n'}, [], 10, 10)
+    for rule in ('DS-0002', 'DS-0026'):
+        item = file_configuration_finding(target, rule, 'high', 'Dockerfile', [])
+        assert item['evidence_scope'] == 'file'

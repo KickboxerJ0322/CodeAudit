@@ -170,3 +170,8 @@ def test_coverage_diagnostics_do_not_store_unknown_text(settings, tmp_path):
     assert diagnostic['missing_ids'] and diagnostic['unexpected_id_hashes']
     assert 'untrusted-secret-text' not in json.dumps(metadata)
     assert all(p['id'].startswith('s') for p in metadata['segment_manifest'])
+
+def test_generation_schema_limits_response_ids_to_sent_segments():
+    schema = generation_schema(['s000006', 's000002'])
+    assert schema['properties']['analyzed_segments']['items']['enum'] == ['s000002', 's000006']
+    assert 'enum' not in generation_schema()['properties']['analyzed_segments']['items']

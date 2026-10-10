@@ -78,8 +78,8 @@ def make_finding(repo, source, rule, severity, category, title, file, start, end
 
 def file_configuration_finding(repo, rule, severity, file, secrets):
     # Only trusted absence rules whose absence we can independently verify.
-    instruction = {"AVD-DS-0002": "USER", "DS002": "USER",
-                   "AVD-DS-0026": "HEALTHCHECK", "DS026": "HEALTHCHECK"}.get(rule)
+    instruction = {"AVD-DS-0002": "USER", "DS002": "USER", "DS-0002": "USER",
+                   "AVD-DS-0026": "HEALTHCHECK", "DS026": "HEALTHCHECK", "DS-0026": "HEALTHCHECK"}.get(rule)
     if not instruction or file not in repo.files or Path(file).name.lower() != "dockerfile":
         return None
     code = repo.files[file]
