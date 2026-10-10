@@ -26,6 +26,7 @@ spec:
             # Trust only the observed Cloud Run ingress peer, never all proxy senders.
             - {name: FORWARDED_ALLOW_IPS, value: '127.0.0.1,169.254.169.126'}
             # Selected model's text output is $2.50/M at standard tier (2026-10-10).
+            - {name: CODEAUDIT_DAILY_BUDGET_USD, value: '5'}
             - {name: CODEAUDIT_AI_PRICE_CEILING_PER_MILLION, value: '5'}
             - {name: CODEAUDIT_JOB_NAME, value: codeaudit-worker}
             # Public beta intake; limits and viewing-token protection remain enabled.

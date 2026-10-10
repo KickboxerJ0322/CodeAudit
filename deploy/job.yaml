@@ -21,6 +21,7 @@ spec:
                 - {name: CODEAUDIT_STORE, value: firestore}
                 - {name: CODEAUDIT_FIRESTORE_DATABASE, value: codeaudit}
                 - {name: CODEAUDIT_TIMEOUT_SECONDS, value: '280'}
+                - {name: CODEAUDIT_DAILY_BUDGET_USD, value: '5'}
                 - {name: CODEAUDIT_AI_PRICE_CEILING_PER_MILLION, value: '5'}
                 - {name: CODEAUDIT_WORK_ROOT, value: /tmp/codeaudit}
                 - name: GEMINI_API_KEY
