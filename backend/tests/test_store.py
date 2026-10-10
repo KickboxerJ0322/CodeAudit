@@ -20,7 +20,7 @@ def test_concurrent_admission_and_single_claim(settings):
 
 def test_daily_quota_survives_restart(settings):
     store = SQLiteStore(settings)
-    for _ in range(settings.daily_limit):
+    for _ in range(settings.effective_limits()[0]):
         row, _ = store.create("https://github.com/a/b", "identity")
         store.update(row["id"], status="partial")
     with pytest.raises(AdmissionError) as error:
@@ -54,6 +54,7 @@ def test_usage_reflects_admission_limit(settings):
     from app.store import usage_status
     settings.daily_limit = 10
     settings.daily_budget_usd = 10
+    settings.temporary_limit_date_jst = "2099-01-01"
     settings.concurrency = 2
     from pydantic import SecretStr
     settings.gemini_api_key = SecretStr("test-key")
@@ -78,3 +79,15 @@ def test_usage_shares_quota_across_sqlite_instances(settings):
     second = SQLiteStore(settings)
     assert second.usage("same-network")["used_today"] == 1
     assert second.usage("other-network")["used_today"] == 0
+
+def test_temporary_allowance_is_jst_calendar_day(settings):
+    from datetime import datetime, timezone, timedelta
+    jst = timezone(timedelta(hours=9))
+    before = datetime(2026, 10, 10, 23, 59, 59, tzinfo=jst).timestamp()
+    during = datetime(2026, 10, 11, 0, 0, 0, tzinfo=jst).timestamp()
+    ending = datetime(2026, 10, 11, 23, 59, 59, tzinfo=jst).timestamp()
+    after = datetime(2026, 10, 12, 0, 0, 0, tzinfo=jst).timestamp()
+    assert settings.effective_limits(before) == (10, 10.0)
+    assert settings.effective_limits(during) == (30, 30.0)
+    assert settings.effective_limits(ending) == (30, 30.0)
+    assert settings.effective_limits(after) == (10, 10.0)
