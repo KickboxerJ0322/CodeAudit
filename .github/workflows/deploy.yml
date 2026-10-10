@@ -24,26 +24,16 @@ jobs:
       REGION: ${{ vars.GCP_REGION || 'asia-northeast1' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: {node-version: '24'}
-      - run: npm ci --no-audit --no-fund && npm test && npm run build
-        working-directory: frontend
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
-      - run: python -m pip install -r requirements.lock && python -m pip install -e '.[test]' && python -m pytest -q
-        working-directory: backend
       - uses: google-github-actions/auth@v3
         with:
-          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          workload_identity_provider: projects/331230486346/locations/global/workloadIdentityPools/github/providers/codeaudit
+          service_account: codeaudit-deployer@jumpeicloud.iam.gserviceaccount.com
       - uses: google-github-actions/setup-gcloud@v3
-      - run: gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
-      - name: Build and push immutable commit images
+      - name: Test and build on Google Cloud
         run: |
-          docker build --target api -t "$REGION-docker.pkg.dev/$PROJECT_ID/codeaudit/api:$GITHUB_SHA" .
-          docker build --target worker -t "$REGION-docker.pkg.dev/$PROJECT_ID/codeaudit/worker:$GITHUB_SHA" .
-          docker push "$REGION-docker.pkg.dev/$PROJECT_ID/codeaudit/api:$GITHUB_SHA"
-          docker push "$REGION-docker.pkg.dev/$PROJECT_ID/codeaudit/worker:$GITHUB_SHA"
+          gcloud builds submit --no-source --config cloudbuild.yaml --project "$PROJECT_ID" --region "$REGION" --service-account "projects/$PROJECT_ID/serviceAccounts/codeaudit-builder@$PROJECT_ID.iam.gserviceaccount.com" --substitutions "_REGION=$REGION,_COMMIT_SHA=$GITHUB_SHA"
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
       - run: python deploy/render.py --project "$PROJECT_ID" --region "$REGION" --sha "$GITHUB_SHA"
       - name: Deploy worker and API (private by default, intake closed)
         run: |
