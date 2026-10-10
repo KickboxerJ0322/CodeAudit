@@ -118,14 +118,15 @@ class SQLiteStore:
                 raise AdmissionError(503, "現在、監査の受付を停止しています")
             key = day_key(now) + ":" + self.identity(identity)
             quota = db.execute("SELECT count FROM quotas WHERE key=?", (key,)).fetchone()
-            if quota and quota[0] >= self.daily_limit:
+            daily_limit, daily_budget_usd = self.settings.effective_limits(now)
+            if quota and quota[0] >= daily_limit:
                 raise AdmissionError(429, "本日の利用回数上限に達しました（日本時間の午前0時に更新）")
             active = sum(json.loads(data)["status"] not in TERMINAL for (data,) in db.execute("SELECT data FROM audits"))
             if active >= self.settings.concurrency:
                 raise AdmissionError(429, "同時監査の上限に達しています。少し待ってからお試しください")
             day, reservation = day_key(now), self.settings.reservation()
             budget = db.execute("SELECT amount FROM budgets WHERE day=?", (day,)).fetchone()
-            if (budget[0] if budget else 0) + reservation > self.daily_budget_usd:
+            if (budget[0] if budget else 0) + reservation > daily_budget_usd:
                 raise AdmissionError(503, "本日のAI予算上限に達したため受付を停止しています")
             db.execute("INSERT INTO quotas VALUES(?,1) ON CONFLICT(key) DO UPDATE SET count=count+1", (key,))
             db.execute("INSERT INTO budgets VALUES(?,?) ON CONFLICT(day) DO UPDATE SET amount=amount+excluded.amount", (day, reservation))
