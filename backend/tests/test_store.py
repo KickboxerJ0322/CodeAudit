@@ -20,7 +20,7 @@ def test_concurrent_admission_and_single_claim(settings):
 
 def test_daily_quota_survives_restart(settings):
     store = SQLiteStore(settings)
-    for _ in range(3):
+    for _ in range(settings.daily_limit):
         row, _ = store.create("https://github.com/a/b", "identity")
         store.update(row["id"], status="partial")
     with pytest.raises(AdmissionError) as error:
