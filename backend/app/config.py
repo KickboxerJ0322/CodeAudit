@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
 from typing import Literal
 
 from pydantic import Field, SecretStr, model_validator
@@ -11,6 +12,9 @@ ROOT = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="CODEAUDIT_", env_file=(ROOT / ".env", ROOT / "backend" / ".env"), env_file_encoding="utf-8", extra="ignore", populate_by_name=True)
     daily_limit: int = Field(default=10, ge=1)
+    temporary_limit_date_jst: str = "2026-10-11"
+    temporary_daily_limit: int = Field(default=30, ge=1)
+    temporary_daily_budget_usd: float = Field(default=30.0, gt=0)
     concurrency: int = Field(default=2, ge=1, le=20)
     timeout_seconds: int = Field(default=300, ge=10, le=3600)
     tool_timeout_seconds: int = Field(default=90, ge=1)
@@ -52,8 +56,18 @@ class Settings(BaseSettings):
             raise ValueError("クラウドでは32文字以上のidentity_saltが必要です")
         return self
 
+    def effective_limits(self, now: float | None = None):
+        """Temporary development allowance applies only on 2026-10-11 JST."""
+        import time
+        day = datetime.fromtimestamp(now if now is not None else time.time(), timezone(timedelta(hours=9))).strftime("%Y-%m-%d")
+        if day == self.temporary_limit_date_jst:
+            return self.temporary_daily_limit, self.temporary_daily_budget_usd
+        return self.daily_limit, self.daily_budget_usd
+
     def public_limits(self):
-        return {name: getattr(self, name) for name in ("daily_limit", "concurrency", "timeout_seconds", "max_repository_mb", "max_files", "max_file_bytes", "retention_hours", "accepting_audits", "ai_max_total_tokens", "ai_max_cost_usd", "daily_budget_usd")}
+        result = {name: getattr(self, name) for name in ("daily_limit", "concurrency", "timeout_seconds", "max_repository_mb", "max_files", "max_file_bytes", "retention_hours", "accepting_audits", "ai_max_total_tokens", "ai_max_cost_usd", "daily_budget_usd")}
+        result["daily_limit"], result["daily_budget_usd"] = self.effective_limits()
+        return result
 
     def reservation(self) -> float:
         if not self.ai_enabled or (not self.gemini_api_key.get_secret_value() and self.dispatcher != "cloud_run"):
