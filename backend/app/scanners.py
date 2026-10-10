@@ -62,11 +62,19 @@ def relative_file(value: str, root: Path) -> str:
     return name
 
 
+def constant_innerhtml_assignment(code: str) -> bool:
+    """Recognize only direct constant HTML literals, not variable input."""
+    match = re.search(r"\.innerHTML\s*=\s*(['\"\x60])([\s\S]*?)\1\s*;?\s*$", code)
+    return bool(match and (match.group(1) != chr(96) or "\${" not in match.group(2)))
+
+
 def make_finding(repo, source, rule, severity, category, title, file, start, end, reason, impact, remediation, secrets):
     if file not in repo.files:
         return None
     lines = repo.files[file].splitlines()
     if not lines or start < 1 or end < start or end > len(lines):
+        return None
+    if source == "semgrep" and rule.endswith("javascript-innerhtml") and constant_innerhtml_assignment("\n".join(lines[start - 1:end])):
         return None
     evidence = mask("\n".join(lines[start - 1:end]), secrets)[:2000]
     from urllib.parse import quote
@@ -190,6 +198,8 @@ async def scan(repo: Repository, work: Path, settings: Settings) -> tuple[list[d
                     if tool == "trivy" and category == "confirmed":
                         finding["evidence_scope"] = "dependency"
                     findings.append(finding)
+                elif tool == "semgrep" and rule.endswith("javascript-innerhtml") and relative_file(file, root) in repo.files and constant_innerhtml_assignment("\n".join(repo.files[relative_file(file, root)].splitlines()[start - 1:end])):
+                    continue
                 else:
                     status["rejected_findings"] += 1
                     status["location_diagnostics"].append({"rule_id": mask(rule, secrets)[:200], "reason": "file_or_line_unverified"})
