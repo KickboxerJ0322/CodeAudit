@@ -57,7 +57,7 @@ class Gemini:
         if self.calls >= settings.ai_max_calls:
             raise AuditError("AI呼び出し回数上限に達しました。全体監査は未完了です")
         content = {"contents": [{"role": "user", "parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": SYSTEM}]}}
-        generation = {"temperature": 0, "maxOutputTokens": settings.ai_max_output_tokens, "responseFormat": {"text": {"mimeType": "application/json", "schema": AIResponse.model_json_schema()}}}
+        generation = {"temperature": 0, "maxOutputTokens": settings.ai_max_output_tokens, "responseMimeType": "application/json", "responseJsonSchema": AIResponse.model_json_schema()}
         generation["thinkingConfig"] = {"thinkingBudget": 0} if settings.gemini_model.startswith("gemini-2.5-") else {"thinkingLevel": "MINIMAL" if any(name in settings.gemini_model for name in ("3.5", "3.6", "3-flash")) else "LOW"}
         own = self.client is None
         client = self.client or httpx.AsyncClient(timeout=60, trust_env=False, follow_redirects=False)
