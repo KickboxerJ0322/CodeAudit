@@ -98,6 +98,16 @@ class SQLiteStore:
             db.execute("INSERT INTO audits VALUES(?,?)", (row["id"], json.dumps(row, ensure_ascii=False)))
         return row, token
 
+    def usage(self, identity: str):
+        now = time.time()
+        day = day_key(now)
+        with self.connection() as db:
+            key = day + ':' + self.identity(identity)
+            count = db.execute('SELECT count FROM quotas WHERE key=?', (key,)).fetchone()
+            budget = db.execute('SELECT amount FROM budgets WHERE day=?', (day,)).fetchone()
+            active = sum(json.loads(data)['status'] not in TERMINAL and json.loads(data)['deadline'] > now for (data,) in db.execute('SELECT data FROM audits'))
+        return {'used_today': count[0] if count else 0, 'reserved_budget_usd': round(budget[0], 4) if budget else 0.0, 'active_audits': active}
+
     def get(self, audit_id: str):
         with self.connection() as db:
             result = db.execute("SELECT data FROM audits WHERE id=?", (audit_id,)).fetchone()
