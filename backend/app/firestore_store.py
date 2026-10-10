@@ -45,6 +45,26 @@ class FirestoreStore:
         admit(self.client.transaction())
         return row, token
 
+    def reset_daily_limits(self):
+        """Reset current JST day's counters; never modify active audit records."""
+        day = day_key(time.time())
+        # Firestore quota docs are keyed by YYYY-MM-DD + '-' + hashed network.
+        refs = list(self.client.collection("quotas").list_documents())
+        # Only today's documents. Batch to respect Firestore write limits.
+        today_refs = [ref for ref in refs if ref.id.startswith(day + "-")]
+        for start in range(0, len(today_refs), 400):
+            batch = self.client.batch()
+            for ref in today_refs[start:start + 400]:
+                batch.delete(ref)
+            batch.commit()
+        @firestore.transactional
+        def reset(tx):
+            current = self.coordinator.get(transaction=tx).to_dict() or {}
+            if current.get("day") == day:
+                tx.update(self.coordinator, {"budget": 0})
+        reset(self.client.transaction())
+        return day
+
     def usage(self, identity):
         now = time.time()
         day = day_key(now)
