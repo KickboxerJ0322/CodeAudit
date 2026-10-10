@@ -5,3 +5,5 @@
 
 .header-actions{display:flex;align-items:center;gap:18px}.header-actions .secondary{padding:6px 14px}.input-card{margin-top:28px}.hero{padding:42px 0 16px}
 @media(max-width:700px){.header-actions{gap:8px}.header-actions .secondary{font-size:11px;padding:5px 9px}.input-card{margin-top:18px}}
+
+.admin-reset{margin:25px 0 50px}.admin-reset .input-row{margin-top:10px}.admin-reset input{max-width:540px}
