@@ -131,6 +131,15 @@ class SQLiteStore:
             db.execute("INSERT INTO audits VALUES(?,?)", (row["id"], json.dumps(row, ensure_ascii=False)))
         return row, token
 
+    def reset_daily_limits(self):
+        """Administrator-only operation: clear today's quota and budget atomically."""
+        today = day_key(time.time())
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("DELETE FROM quotas WHERE key LIKE ?", (today + ":%",))
+            db.execute("DELETE FROM budgets WHERE day=?", (today,))
+        return today
+
     def usage(self, identity: str):
         now = time.time()
         day = day_key(now)
