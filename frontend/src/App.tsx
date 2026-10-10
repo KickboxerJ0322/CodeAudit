@@ -13,29 +13,8 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [limits, setLimits] = useState<Limits>();
   const [usage, setUsage] = useState<Usage>();
-  const [adminToken, setAdminToken] = useState('');
-  const [resetMessage, setResetMessage] = useState('');
-  const [resetBusy, setResetBusy] = useState(false);
   useEffect(() => { const controller = new AbortController(); const refresh = () => fetch('/api/usage', { signal: controller.signal }).then(r => { if (!r.ok) throw Error(); return r.json(); }).then(setUsage).catch(() => {}); refresh(); const interval = setInterval(refresh, 30000); return () => { clearInterval(interval); controller.abort(); }; }, []);
   useEffect(() => { const controller = new AbortController(); fetch('/api/limits', { signal: controller.signal }).then(r => { if (!r.ok) throw Error(); return r.json(); }).then(setLimits).catch(() => {}); return () => controller.abort(); }, []);
-  async function resetLimits() {
-    if (!adminToken || !window.confirm('本日の全利用者の監査回数とAI予算予約額をリセットします。追加のAPI費用が発生する可能性があります。実行しますか？')) return;
-    setResetBusy(true); setResetMessage('');
-    try {
-      const response = await fetch('/api/admin/reset-daily-limits', {
-        method: 'POST', headers: { Authorization: 'Bearer ' + adminToken }
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'リセットできませんでした');
-      setResetMessage(body.message);
-      setAdminToken('');
-      const usageResponse = await fetch('/api/usage');
-      if (usageResponse.ok) setUsage(await usageResponse.json());
-    } catch (error) {
-      setResetMessage(error instanceof Error ? error.message : 'リセットできませんでした');
-    } finally { setResetBusy(false); }
-  }
-
   async function start(e: React.FormEvent) {
     e.preventDefault(); setError('');
     if (!validRepository(url.trim())) { setError('https://github.com/所有者/リポジトリ名 の形式で入力してください。'); return; }
@@ -54,13 +33,7 @@ export default function App() {
         <section className="hero"><div className="eyebrow">AI SECURITY CODE REVIEW</div><h1>コードの安全性を、<br/><span>わかりやすく。</span></h1><p>公開GitHubリポジトリのセキュリティをチェック。<br/>問題の理由から直し方まで、日本語で理解できます。</p></section>
                 <div className="section-heading"><h2>コードを、複数の視点から。</h2><span>実行状況・検査範囲はレポートに明示</span></div><section className="features">{[['01', '秘密情報の漏えい', 'APIキーやパスワードがコードに残っていないかを調査します。', 'GITLEAKS'], ['02', '危険なコードと依存関係', '入力値の扱い、認証・認可、ライブラリの脆弱性を確認します。', 'SEMGREP / TRIVY'], ['03', 'リポジトリ全体のAI分析', '全対象ファイルとファイル間の関係を確認し、具体的な修正方法を提案します。', 'GEMINI']].map(([n, title, text, tool]) => <article className="feature" key={n}><span className="feature-num">{n}</span><h3>{title}</h3><p>{text}</p><small>{tool}</small></article>)}</section>
 
-        <section className="panel admin-reset"><h2>管理者向け：1日の利用制限をリセット</h2>
-          <p className="muted">全利用者の当日監査回数とサービス全体のAI予算予約額をリセットします。実際の請求額は減りません。追加課金を招くため、管理者のみ操作できます。</p>
-          <label htmlFor="admin-reset-token">管理者トークン（Secret Managerで設定）</label>
-          <div className="input-row"><input id="admin-reset-token" type="password" autoComplete="off" value={adminToken} onChange={e => setAdminToken(e.target.value)} placeholder="管理者のみ入力"/>
-            <button className="secondary" disabled={resetBusy || !adminToken} onClick={resetLimits}>{resetBusy ? '処理中…' : '本日の制限をリセット'}</button></div>
-          {resetMessage && <p role="status">{resetMessage}</p>}
-        </section>
+
 </> : view === 'audit' && ticket ? <><button className="back" onClick={() => setView('home')}>← ホームに戻る</button><AuditView ticket={ticket}/></> : <>
         <button className="back" onClick={() => setView('home')}>← ホームに戻る</button><div className="eyebrow">DESIGN SAMPLE · 実際の監査結果ではありません</div><h1 className="page-title">{view === 'progress' ? '監査の進捗' : '監査レポート'}</h1>
         {view === 'progress' ? <section className="panel"><p>サンプル表示です。ジョブは実行していません。</p><ol className="steps">{steps.map((s, i) => <li key={s}><span className="step-num">{i + 1}</span><strong>{s}</strong><span className="muted">未実行</span></li>)}</ol><button className="secondary" onClick={() => setView('report')}>結果の表示サンプルを見る →</button></section> : <ReportSample />}
