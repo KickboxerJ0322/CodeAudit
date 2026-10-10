@@ -70,6 +70,11 @@ def create_app(settings=None, store=None, dispatcher=None):
         import shutil
         return {**settings.public_limits(), "ai_configured": settings.ai_enabled and (bool(settings.gemini_api_key.get_secret_value()) or settings.dispatcher == "cloud_run"), "tools_available": {name: bool(shutil.which(getattr(settings, name + "_bin"))) for name in ("gitleaks", "semgrep", "trivy")}, "tools_scope": "worker" if settings.dispatcher == "cloud_run" else "local"}
 
+    @app.get("/api/usage")
+    async def usage(request: Request):
+        identity = request.client.host if request.client else "unknown"
+        return store.usage(identity)
+
     @app.post("/api/audits", status_code=202)
     async def start_audit(payload: AuditRequest, request: Request):
         # Ignore user supplied X-Forwarded-For. Trust is configured at the ASGI server only.
