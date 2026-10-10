@@ -13,8 +13,29 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [limits, setLimits] = useState<Limits>();
   const [usage, setUsage] = useState<Usage>();
+  const [adminToken, setAdminToken] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
   useEffect(() => { const controller = new AbortController(); const refresh = () => fetch('/api/usage', { signal: controller.signal }).then(r => { if (!r.ok) throw Error(); return r.json(); }).then(setUsage).catch(() => {}); refresh(); const interval = setInterval(refresh, 30000); return () => { clearInterval(interval); controller.abort(); }; }, []);
   useEffect(() => { const controller = new AbortController(); fetch('/api/limits', { signal: controller.signal }).then(r => { if (!r.ok) throw Error(); return r.json(); }).then(setLimits).catch(() => {}); return () => controller.abort(); }, []);
+  async function resetLimits() {
+    if (!adminToken || !window.confirm('本日の全利用者の監査回数とAI予算予約額をリセットします。追加のAPI費用が発生する可能性があります。実行しますか？')) return;
+    setResetBusy(true); setResetMessage('');
+    try {
+      const response = await fetch('/api/admin/reset-daily-limits', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + adminToken }
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'リセットできませんでした');
+      setResetMessage(body.message);
+      setAdminToken('');
+      const usageResponse = await fetch('/api/usage');
+      if (usageResponse.ok) setUsage(await usageResponse.json());
+    } catch (error) {
+      setResetMessage(error instanceof Error ? error.message : 'リセットできませんでした');
+    } finally { setResetBusy(false); }
+  }
+
   async function start(e: React.FormEvent) {
     e.preventDefault(); setError('');
     if (!validRepository(url.trim())) { setError('https://github.com/所有者/リポジトリ名 の形式で入力してください。'); return; }
@@ -28,10 +49,18 @@ export default function App() {
     <main>
       {view === 'home' ? <>
         <section className="input-card"><div className="card-heading"><span>01 / REPOSITORY</span><span>公開リポジトリ専用</span></div><form onSubmit={start}><label htmlFor="repository">GitHubリポジトリURL</label><div className="input-row"><input id="repository" type="url" placeholder="https://github.com/owner/repository" value={url} onChange={e => setUrl(e.target.value)} aria-describedby="input-help input-error" required maxLength={300}/><button className="primary" disabled={busy || limits?.accepting_audits === false || usage?.can_start === false}>{busy ? '確認中…' : '監査開始 →'}</button></div><p id="input-help" className="muted">ログイン不要 · コードは実行しません · 取得と解析には時間がかかります</p><p id="input-error" role="alert" className="error">{error}</p></form><button className="example" onClick={() => { setUrl('https://github.com/KickboxerJ0322/rain-map'); setError(''); }}>rain-map のURLを入力 ↗</button>{ticket && <button className="secondary" onClick={() => setView('audit')}>前の監査に戻る</button>}</section>
-        <div className="section-heading"><h2>コードを、複数の視点から。</h2><span>実行状況・検査範囲はレポートに明示</span></div><section className="features">{[['01', '秘密情報の漏えい', 'APIキーやパスワードがコードに残っていないかを調査します。', 'GITLEAKS'], ['02', '危険なコードと依存関係', '入力値の扱い、認証・認可、ライブラリの脆弱性を確認します。', 'SEMGREP / TRIVY'], ['03', 'リポジトリ全体のAI分析', '全対象ファイルとファイル間の関係を確認し、具体的な修正方法を提案します。', 'GEMINI']].map(([n, title, text, tool]) => <article className="feature" key={n}><span className="feature-num">{n}</span><h3>{title}</h3><p>{text}</p><small>{tool}</small></article>)}</section>
         <section className="bottom-grid"><article className="panel"><h2>無料利用の上限と現在の利用状況</h2>{limits ? <div className="limits"><span><strong>{limits.daily_limit}回</strong> / 日・利用者</span><span><strong>{limits.max_repository_mb}MB</strong> / リポジトリ</span><span><strong>{limits.timeout_seconds / 60}分</strong> / 監査</span><span><strong>{limits.concurrency}件</strong> / 同時監査</span></div> : <p className="muted">API未接続。設定上限はバックエンド起動後に表示します。</p>}{limits && <div className="usage-summary"><p><strong>本日の利用：{usage ? `${usage.used_today} / ${limits.daily_limit}回` : '取得中'}</strong>（残り{usage ? usage.remaining_today + '回' : '未取得'}）</p><p role="status"><strong>受付状態：{usage ? (usage.can_start ? '受付可能' : '受付不可') : '確認中'}</strong>{usage && !usage.can_start ? ` — ${usage.block_reason}` : ''}</p><p>判定日（日本時間）：{usage?.day_jst ?? '取得中'}</p><p>現在の同時監査：{usage ? `${usage.active_audits} / ${limits.concurrency}件` : '取得中'}</p><p>AIの1監査上限：{limits.ai_max_total_tokens.toLocaleString()}トークン / ${limits.ai_max_cost_usd.toFixed(2)} USD</p><p>本日のAI予算予約額：{usage ? `${usage.reserved_budget_usd.toFixed(2)} / ${limits.daily_budget_usd.toFixed(2)} USD` : '取得中'}</p><p>次の監査に必要なAI予算予約額：{usage ? usage.next_audit_reservation_usd.toFixed(2) + ' USD' : '取得中'}</p><p className="muted">これはCodeAuditのFirestore／SQLiteが判定に使う数値です。回数はブラウザ単位ではなく、サーバーが識別する接続元ネットワーク単位です。AI予算は全利用者共通です。費用は実請求額ではなく監査受付時の予約額で、実消費トークン累計は未計測です。受付状態は取得時点の値で、他の利用者の受付により変わる場合があります。</p></div>}<p className="muted">回数制限は日本時間の午前0時に更新します。結果は{limits?.retention_hours ?? 24}時間で閲覧不可となります。同じネットワークでは回数制限を共有する場合があります。</p></article><article className="panel"><h2>画面サンプルを確認</h2><p className="muted">架空のデータで、監査の流れと日本語レポートの表示を確認できます。</p><div className="actions"><button className="secondary" onClick={() => setView('progress')}>進捗サンプル</button><button className="secondary" onClick={() => setView('report')}>結果サンプル ↗</button></div></article></section>
       </> : view === 'info' ? <><button className="back" onClick={() => setView('home')}>← ホームに戻る</button>      <div className="notice">{limits ? (!limits.accepting_audits ? '現在、監査受付を停止しています。' : `公開リポジトリを監査できます。${limits.ai_configured ? '' : ' Geminiキー未設定：AIは未検査となります。'}${limits.tools_scope === 'worker' ? ' 解析ツールはワーカーで実行し、状態をレポートに記録します。' : Object.values(limits.tools_available).every(Boolean) ? '' : ' 未導入の静的解析ツールは未検査となります。'}`) : 'APIの設定を確認中です。バックエンドが起動していることを確認してください。'}</div>
         <section className="hero"><div className="eyebrow">AI SECURITY CODE REVIEW</div><h1>コードの安全性を、<br/><span>わかりやすく。</span></h1><p>公開GitHubリポジトリのセキュリティをチェック。<br/>問題の理由から直し方まで、日本語で理解できます。</p></section>
+                <div className="section-heading"><h2>コードを、複数の視点から。</h2><span>実行状況・検査範囲はレポートに明示</span></div><section className="features">{[['01', '秘密情報の漏えい', 'APIキーやパスワードがコードに残っていないかを調査します。', 'GITLEAKS'], ['02', '危険なコードと依存関係', '入力値の扱い、認証・認可、ライブラリの脆弱性を確認します。', 'SEMGREP / TRIVY'], ['03', 'リポジトリ全体のAI分析', '全対象ファイルとファイル間の関係を確認し、具体的な修正方法を提案します。', 'GEMINI']].map(([n, title, text, tool]) => <article className="feature" key={n}><span className="feature-num">{n}</span><h3>{title}</h3><p>{text}</p><small>{tool}</small></article>)}</section>
+
+        <section className="panel admin-reset"><h2>管理者向け：1日の利用制限をリセット</h2>
+          <p className="muted">全利用者の当日監査回数とサービス全体のAI予算予約額をリセットします。実際の請求額は減りません。追加課金を招くため、管理者のみ操作できます。</p>
+          <label htmlFor="admin-reset-token">管理者トークン（Secret Managerで設定）</label>
+          <div className="input-row"><input id="admin-reset-token" type="password" autoComplete="off" value={adminToken} onChange={e => setAdminToken(e.target.value)} placeholder="管理者のみ入力"/>
+            <button className="secondary" disabled={resetBusy || !adminToken} onClick={resetLimits}>{resetBusy ? '処理中…' : '本日の制限をリセット'}</button></div>
+          {resetMessage && <p role="status">{resetMessage}</p>}
+        </section>
 </> : view === 'audit' && ticket ? <><button className="back" onClick={() => setView('home')}>← ホームに戻る</button><AuditView ticket={ticket}/></> : <>
         <button className="back" onClick={() => setView('home')}>← ホームに戻る</button><div className="eyebrow">DESIGN SAMPLE · 実際の監査結果ではありません</div><h1 className="page-title">{view === 'progress' ? '監査の進捗' : '監査レポート'}</h1>
         {view === 'progress' ? <section className="panel"><p>サンプル表示です。ジョブは実行していません。</p><ol className="steps">{steps.map((s, i) => <li key={s}><span className="step-num">{i + 1}</span><strong>{s}</strong><span className="muted">未実行</span></li>)}</ol><button className="secondary" onClick={() => setView('report')}>結果の表示サンプルを見る →</button></section> : <ReportSample />}
