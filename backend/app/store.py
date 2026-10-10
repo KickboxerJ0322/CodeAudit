@@ -32,6 +32,39 @@ def authorize(row: dict | None, token: str, now: float | None = None) -> bool:
     return bool(row and row["expires_at"] > (now if now is not None else time.time()) and hmac.compare_digest(row["token_hash"], hashlib.sha256(token.encode()).hexdigest()))
 
 
+def usage_status(settings, used_today, reserved_budget_usd, active_audits):
+    """Advisory snapshot using the same ordering and thresholds as admission."""
+    reservation = settings.reservation()
+    if not settings.accepting_audits:
+        reason = "監査受付を停止しています"
+        code = "intake_closed"
+    elif used_today >= settings.daily_limit:
+        reason = "本日の利用回数上限に達しました"
+        code = "daily_limit"
+    elif active_audits >= settings.concurrency:
+        reason = "同時監査の上限に達しています。しばらくしてからお試しください"
+        code = "concurrency"
+    elif reserved_budget_usd + reservation > settings.daily_budget_usd + 1e-9:
+        reason = "サービス全体の本日のAI予算上限に達しました"
+        code = "daily_budget"
+    else:
+        reason, code = "", "ready"
+    return {
+        "used_today": used_today,
+        "remaining_today": max(0, settings.daily_limit - used_today),
+        "reserved_budget_usd": round(reserved_budget_usd, 4),
+        "active_audits": active_audits,
+        "next_audit_reservation_usd": round(reservation, 4),
+        "can_start": code == "ready",
+        "block_reason": reason,
+        "block_code": code,
+        "day_jst": day_key(time.time()),
+        "identity_scope": "server_network",
+        "budget_scope": "all_users",
+        "budget_is_reservation": True,
+    }
+
+
 class SQLiteStore:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -106,7 +139,7 @@ class SQLiteStore:
             count = db.execute('SELECT count FROM quotas WHERE key=?', (key,)).fetchone()
             budget = db.execute('SELECT amount FROM budgets WHERE day=?', (day,)).fetchone()
             active = sum(json.loads(data)['status'] not in TERMINAL and json.loads(data)['deadline'] > now for (data,) in db.execute('SELECT data FROM audits'))
-        return {'used_today': count[0] if count else 0, 'reserved_budget_usd': round(budget[0], 4) if budget else 0.0, 'active_audits': active}
+        return usage_status(self.settings, count[0] if count else 0, budget[0] if budget else 0.0, active)
 
     def get(self, audit_id: str):
         with self.connection() as db:
