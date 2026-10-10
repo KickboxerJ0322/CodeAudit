@@ -1,0 +1,30 @@
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: codeaudit-worker
+spec:
+  template:
+    spec:
+      taskCount: 1
+      parallelism: 1
+      template:
+        spec:
+          serviceAccountName: codeaudit-worker@jumpeicloud.iam.gserviceaccount.com
+          maxRetries: 0
+          timeoutSeconds: '300'
+          containers:
+            - image: asia-northeast1-docker.pkg.dev/jumpeicloud/codeaudit/worker:REPLACE_COMMIT_SHA
+              resources:
+                limits: {cpu: '2', memory: 2Gi}
+              env:
+                - {name: GOOGLE_CLOUD_PROJECT, value: jumpeicloud}
+                - {name: CODEAUDIT_STORE, value: firestore}
+                - {name: CODEAUDIT_FIRESTORE_DATABASE, value: codeaudit}
+                - {name: CODEAUDIT_TIMEOUT_SECONDS, value: '280'}
+                - {name: CODEAUDIT_WORK_ROOT, value: /tmp/codeaudit}
+                - name: GEMINI_API_KEY
+                  valueFrom:
+                    secretKeyRef: {name: codeaudit-gemini-key, key: latest}
+                - name: CODEAUDIT_IDENTITY_SALT
+                  valueFrom:
+                    secretKeyRef: {name: codeaudit-identity-salt, key: latest}

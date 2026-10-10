@@ -1,0 +1,36 @@
+rules:
+  - id: python-subprocess-shell
+    languages: [python]
+    severity: WARNING
+    message: 外部入力を含むshell=Trueはコマンド注入の原因になります。引数配列とshell=Falseを使用してください。
+    pattern: subprocess.$FUNC(..., shell=True, ...)
+  - id: python-eval
+    languages: [python]
+    severity: WARNING
+    message: evalは入力をコードとして実行します。外部入力の到達経路を確認し、安全な解析処理に置き換えてください。
+    pattern: eval(...)
+  - id: python-yaml-load
+    languages: [python]
+    severity: WARNING
+    message: YAMLの読み込み設定を確認し、信頼できない入力にはsafe_loadを使用してください。
+    pattern: yaml.load(...)
+  - id: python-debug-server
+    languages: [python]
+    severity: WARNING
+    message: 公開環境でdebug=Trueを有効にしないでください。
+    pattern: $APP.run(..., debug=True, ...)
+  - id: javascript-eval
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: evalへの外部入力はコード実行につながります。入力元を確認し、JSON.parseなどに置き換えてください。
+    pattern: eval(...)
+  - id: javascript-innerhtml
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: innerHTMLに信頼できない入力が届くとXSSにつながります。textContentや検証済みサニタイザーを検討してください。
+    pattern: $EL.innerHTML = $VALUE
+  - id: javascript-tls-disabled
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: TLS証明書検証が無効です。rejectUnauthorizedをtrueにしてください。
+    pattern: "{..., rejectUnauthorized: false, ...}"

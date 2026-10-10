@@ -1,0 +1,14 @@
+.git
+.env
+.env.*
+**/.venv
+**/node_modules
+**/dist
+**/__pycache__
+**/.audit-work
+**/.pytest_cache
+**/*.egg-info
+**/*.tsbuildinfo
+.tools
+artifacts
+gha-creds-*.json

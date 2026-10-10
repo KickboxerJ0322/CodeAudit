@@ -1,0 +1,9 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {"collectionGroup": "audits", "fieldPath": "report", "indexes": []},
+    {"collectionGroup": "audits", "fieldPath": "token_hash", "indexes": []},
+    {"collectionGroup": "audits", "fieldPath": "delete_at", "ttl": true, "indexes": []},
+    {"collectionGroup": "quotas", "fieldPath": "delete_at", "ttl": true, "indexes": []}
+  ]
+}

@@ -1,0 +1,43 @@
+import { useEffect, useState } from 'react';
+import { validRepository } from './repository';
+import AuditView, { type Ticket } from './AuditView';
+
+type Limits = { daily_limit: number; concurrency: number; timeout_seconds: number; max_repository_mb: number; retention_hours: number; accepting_audits: boolean; ai_configured: boolean; tools_available: Record<string, boolean>; tools_scope?: string };
+const steps = ['GitHub取得', '静的解析', 'Gemini全体分析', 'レポート生成'];
+export default function App() {
+  const [view, setView] = useState<'home' | 'progress' | 'report' | 'audit'>('home');
+  const [ticket, setTicket] = useState<Ticket>();
+  const [url, setUrl] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [limits, setLimits] = useState<Limits>();
+  useEffect(() => { const controller = new AbortController(); fetch('/api/limits', { signal: controller.signal }).then(r => { if (!r.ok) throw Error(); return r.json(); }).then(setLimits).catch(() => {}); return () => controller.abort(); }, []);
+  async function start(e: React.FormEvent) {
+    e.preventDefault(); setError('');
+    if (!validRepository(url.trim())) { setError('https://github.com/所有者/リポジトリ名 の形式で入力してください。'); return; }
+    setBusy(true);
+    try { const r = await fetch('/api/audits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repository_url: url.trim() }), signal: AbortSignal.timeout(20000) }); const body = await r.json(); if (!r.ok) { setError(typeof body.detail === 'string' ? body.detail : '入力内容を確認してください。'); } else { setTicket(body); setView('audit'); } }
+    catch { setError('APIに接続できません。バックエンドの起動を確認してください。'); }
+    finally { setBusy(false); }
+  }
+  return <div className="shell">
+    <header><button className="brand" onClick={() => setView('home')} aria-label="CodeAudit ホーム"><span className="brand-icon">&lt;/&gt;</span>Code<span>Audit</span></button><div className="header-note"><span className="dot"/> SECURITY AUDIT · v0.2</div></header>
+    <main>
+      <div className="notice">{limits ? (!limits.accepting_audits ? '現在、監査受付を停止しています。' : `公開リポジトリを監査できます。${limits.ai_configured ? '' : ' Geminiキー未設定：AIは未検査となります。'}${limits.tools_scope === 'worker' ? ' 解析ツールはワーカーで実行し、状態をレポートに記録します。' : Object.values(limits.tools_available).every(Boolean) ? '' : ' 未導入の静的解析ツールは未検査となります。'}`) : 'APIの設定を確認中です。バックエンドが起動していることを確認してください。'}</div>
+      {view === 'home' ? <>
+        <section className="hero"><div className="eyebrow">AI SECURITY CODE REVIEW</div><h1>コードの安全性を、<br/><span>わかりやすく。</span></h1><p>公開GitHubリポジトリのセキュリティをチェック。<br/>問題の理由から直し方まで、日本語で理解できます。</p></section>
+        <section className="input-card"><div className="card-heading"><span>01 / REPOSITORY</span><span>公開リポジトリ専用</span></div><form onSubmit={start}><label htmlFor="repository">GitHubリポジトリURL</label><div className="input-row"><input id="repository" type="url" placeholder="https://github.com/owner/repository" value={url} onChange={e => setUrl(e.target.value)} aria-describedby="input-help input-error" required maxLength={300}/><button className="primary" disabled={busy || limits?.accepting_audits === false}>{busy ? '確認中…' : '監査開始 →'}</button></div><p id="input-help" className="muted">ログイン不要 · コードは実行しません · 取得と解析には時間がかかります</p><p id="input-error" role="alert" className="error">{error}</p></form><button className="example" onClick={() => { setUrl('https://github.com/KickboxerJ0322/rain-map'); setError(''); }}>rain-map のURLを入力 ↗</button>{ticket && <button className="secondary" onClick={() => setView('audit')}>前の監査に戻る</button>}</section>
+        <div className="section-heading"><h2>コードを、複数の視点から。</h2><span>実行状況・検査範囲はレポートに明示</span></div><section className="features">{[['01', '秘密情報の漏えい', 'APIキーやパスワードがコードに残っていないかを調査します。', 'GITLEAKS'], ['02', '危険なコードと依存関係', '入力値の扱い、認証・認可、ライブラリの脆弱性を確認します。', 'SEMGREP / TRIVY'], ['03', 'リポジトリ全体のAI分析', '全対象ファイルとファイル間の関係を確認し、具体的な修正方法を提案します。', 'GEMINI']].map(([n, title, text, tool]) => <article className="feature" key={n}><span className="feature-num">{n}</span><h3>{title}</h3><p>{text}</p><small>{tool}</small></article>)}</section>
+        <section className="bottom-grid"><article className="panel"><h2>無料利用の初期上限</h2>{limits ? <div className="limits"><span><strong>{limits.daily_limit}回</strong> / 日・利用者</span><span><strong>{limits.max_repository_mb}MB</strong> / リポジトリ</span><span><strong>{limits.timeout_seconds / 60}分</strong> / 監査</span><span><strong>{limits.concurrency}件</strong> / 同時監査</span></div> : <p className="muted">API未接続。設定上限はバックエンド起動後に表示します。</p>}<p className="muted">回数制限は日本時間の午前0時に更新します。結果は{limits?.retention_hours ?? 24}時間で閲覧不可となります。同じネットワークでは回数制限を共有する場合があります。</p></article><article className="panel"><h2>画面サンプルを確認</h2><p className="muted">架空のデータで、監査の流れと日本語レポートの表示を確認できます。</p><div className="actions"><button className="secondary" onClick={() => setView('progress')}>進捗サンプル</button><button className="secondary" onClick={() => setView('report')}>結果サンプル ↗</button></div></article></section>
+      </> : view === 'audit' && ticket ? <><button className="back" onClick={() => setView('home')}>← ホームに戻る</button><AuditView ticket={ticket}/></> : <>
+        <button className="back" onClick={() => setView('home')}>← ホームに戻る</button><div className="eyebrow">DESIGN SAMPLE · 実際の監査結果ではありません</div><h1 className="page-title">{view === 'progress' ? '監査の進捗' : '監査レポート'}</h1>
+        {view === 'progress' ? <section className="panel"><p>サンプル表示です。ジョブは実行していません。</p><ol className="steps">{steps.map((s, i) => <li key={s}><span className="step-num">{i + 1}</span><strong>{s}</strong><span className="muted">未実行</span></li>)}</ol><button className="secondary" onClick={() => setView('report')}>結果の表示サンプルを見る →</button></section> : <ReportSample />}
+      </>}
+    </main><footer><span>CodeAudit <span className="muted">/ コードを理解するためのセキュリティ監査</span></span><span>検出がなくても、安全性を完全には保証しません。</span></footer>
+  </div>;
+}
+function ReportSample() {
+  const sample = { sample: true, status: 'not_executed', repository: 'example/demo-repository', commit_sha: null, audited_at: null, analyzed_files: 0, excluded_files: 0, findings: [{ category: 'recommendation', severity: 'low', title: '入力値の長さに上限を設ける（架空の例）', file: 'src/example.ts', line: 12, confidence: null }] };
+  function download(format: 'json' | 'md') { const content = format === 'json' ? JSON.stringify(sample, null, 2) : '# CodeAudit 画面サンプル\n\n実際の監査結果ではありません。監査未実行。\n\n## 入力値の長さに上限を設ける（架空の例）\n\n分類：セキュリティ改善の推奨事項\n\n長すぎる入力による負荷を抑えるため、文字数制限を検討してください。\n'; const link = document.createElement('a'); const address = URL.createObjectURL(new Blob([content], { type: format === 'json' ? 'application/json' : 'text/markdown;charset=utf-8' })); link.href = address; link.download = `codeaudit-sample.${format}`; link.click(); URL.revokeObjectURL(address); }
+  return <><section className="panel report-meta"><div><h2>example / demo-repository</h2><p className="muted">架空のリポジトリ · コミットSHA：なし · 監査日時：なし</p></div><span className="badge">監査未実行</span></section><div className="severity-grid">{['重大', '高', '中', '低'].map((s, i) => <article className={`severity level-${i}`} key={s}><span>{s}</span><strong>{i === 3 ? '1' : '0'}</strong><small>サンプル件数</small></article>)}</div><section className="panel"><h2>問題の詳細</h2><span className="badge">セキュリティ改善の推奨事項</span><h3>入力値の長さに上限を設ける（架空の例）</h3><code>src/example.ts : 12</code><p>非常に長い入力を受け付けると、処理に必要なメモリや時間が増える可能性があります。</p><h3>修正方法</h3><p>入力の文字数上限を決め、サーバー側で検証します。上限を超えた場合は、利用者にわかりやすいエラーを返します。</p><p className="muted">AI確信度：なし（AI未実行） · コードの根拠：未検証 · GitHubリンク：実データがないため未表示</p></section><section className="panel"><h2>監査範囲</h2><p>分析対象：0ファイル / 除外：0ファイル。Gitleaks・Semgrep・Trivy・Geminiはすべて未実行です。</p><p className="muted">本番レポートでは「確認された問題」「設定確認が必要な問題」「セキュリティ改善の推奨事項」を分け、未検査項目と対象・除外ファイルを表示します。</p><div className="actions"><button className="secondary" onClick={() => download('md')}>サンプルMarkdown ↓</button><button className="secondary" onClick={() => download('json')}>サンプルJSON ↓</button></div></section></>;
+}

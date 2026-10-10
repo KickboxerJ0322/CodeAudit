@@ -1,0 +1,107 @@
+import asyncio
+import json
+import httpx
+import pytest
+from pydantic import SecretStr
+from app.gemini import Gemini, analyze, segments, validate_finding
+from app.models import AIFinding, AIResponse
+from app.redaction import mask, scrub
+from app.repository import AuditError, Repository
+
+
+def repo(tmp_path):
+    return Repository('https://github.com/a/b', 'a' * 40, tmp_path, {'a.py': 'value = input()\neval(value)\n', 'b.py': 'from a import value\n'}, [], 50, 50)
+
+
+def test_redaction_preserves_lines_and_json():
+    secret = 'ghp_' + 'A' * 30
+    text = f'password="dangerous-value"\nkey="{secret}"\n'
+    result = mask(text)
+    assert 'dangerous-value' not in result and secret not in result
+    assert text.count('\n') == result.count('\n')
+    assert '[REDACTED]' in scrub({'evidence': '{"password": "dangerous-value"}'})['evidence']
+    assert json.loads(json.dumps(scrub({'evidence': text})))['evidence'] == result
+
+
+def test_all_segments_preserve_every_line():
+    files = {'a.py': 'one\ntwo\nthree\n', 'b.py': 'x\n'}
+    parts = segments(files, 8)
+    for file, code in files.items():
+        assert ''.join(p['code'] for p in parts if p['file'] == file) == code
+
+
+def finding(**changes):
+    return AIFinding(severity='high', category='confirmed', title='入力のコード実行', file=changes.get('file', 'a.py'), start_line=changes.get('start_line', 2), end_line=changes.get('end_line', 2), evidence=changes.get('evidence', 'eval(value)'), reason='外部入力が実行されます', impact='コード実行', remediation='evalを除去してください', confidence=.8)
+
+
+def test_ai_location_is_not_exploit_confirmation(tmp_path):
+    target = repo(tmp_path)
+    result = validate_finding(finding(), target, target.files, [])
+    assert result['category'] == 'configuration' and result['evidence_verified'] is True
+    assert target.sha in result['github_url']
+    for item in [finding(file='missing.py'), finding(end_line=99), finding(evidence='invented')]:
+        assert validate_finding(item, target, target.files, []) is None
+
+
+class FakeGemini:
+    def __init__(self, omit=False, fail_integration=False):
+        self.used_tokens, self.calls = 0, 0
+        self.omit, self.fail_integration = omit, fail_integration
+        self.prompts = []
+    async def request(self, prompt):
+        data = json.loads(prompt)
+        self.prompts.append(data)
+        self.calls += 1
+        self.used_tokens += 100
+        if 'segments' in data:
+            ids = [p['id'] for p in data['segments']]
+        else:
+            if self.fail_integration:
+                raise AuditError('integration failed')
+            ids = [i for a in data['analysis'] for i in a['segments']]
+        return AIResponse(summary='ファイル間の入力経路を確認しました', analyzed_segments=[] if self.omit else ids, findings=[])
+
+
+def test_complete_analysis_and_cross_file(settings, tmp_path):
+    settings.gemini_api_key = SecretStr('test-key')
+    engine = FakeGemini()
+    _, metadata = asyncio.run(analyze(repo(tmp_path), [], [], settings, engine))
+    assert metadata['status'] == 'completed' and metadata['cross_file_completed'] is True
+    assert metadata['analyzed_files'] == ['a.py', 'b.py']
+    assert len(engine.prompts) == 2
+    assert {p['file'] for p in engine.prompts[0]['segments']} == {'a.py', 'b.py'}
+
+
+@pytest.mark.parametrize('omit,fail', [(True, False), (False, True)])
+def test_incomplete_ai_cannot_be_complete(settings, tmp_path, omit, fail):
+    settings.gemini_api_key = SecretStr('test-key')
+    _, result = asyncio.run(analyze(repo(tmp_path), [], [], settings, FakeGemini(omit, fail)))
+    assert result['status'] != 'completed' and result['cross_file_completed'] is False
+
+
+def test_preflight_budget_rejects_before_generation(settings):
+    settings.gemini_api_key = SecretStr('test-key')
+    settings.ai_max_total_tokens = 3000
+    calls = []
+    def respond(request):
+        calls.append(request.url.path)
+        return httpx.Response(200, json={'totalTokens': 5000})
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            with pytest.raises(AuditError, match='上限'):
+                await Gemini(settings, client).request('code')
+    asyncio.run(run())
+    assert len(calls) == 1 and calls[0].endswith(':countTokens')
+
+
+def test_truncated_output_is_not_complete(settings):
+    settings.gemini_api_key = SecretStr('test-key')
+    def respond(request):
+        if request.url.path.endswith(':countTokens'):
+            return httpx.Response(200, json={'totalTokens': 10})
+        return httpx.Response(200, json={'candidates': [{'finishReason': 'MAX_TOKENS'}]})
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            with pytest.raises(AuditError, match='打ち切'):
+                await Gemini(settings, client).request('code')
+    asyncio.run(run())

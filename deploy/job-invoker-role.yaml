@@ -1,0 +1,6 @@
+title: CodeAudit job dispatcher
+description: Runs the audit job with an audit ID override
+stage: GA
+includedPermissions:
+  - run.jobs.run
+  - run.jobs.runWithOverrides

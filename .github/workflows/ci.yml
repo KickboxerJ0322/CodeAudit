@@ -1,0 +1,33 @@
+name: Test CodeAudit
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: frontend
+      - run: npm test
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.lock
+        working-directory: backend
+      - run: python -m pip install -e '.[test]'
+        working-directory: backend
+      - run: python -m pytest -q
+        working-directory: backend
+      - run: docker build --target local -t codeaudit-ci .
+      - run: docker run --rm --entrypoint semgrep codeaudit-ci scan --validate --config /app/backend/app/rules/security.yml --metrics off --disable-version-check
