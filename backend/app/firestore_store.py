@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from google.cloud import firestore
-from app.store import AdmissionError, TERMINAL, day_key, new_audit
+from app.store import AdmissionError, TERMINAL, day_key, new_audit, usage_status
 
 
 class FirestoreStore:
@@ -53,7 +53,7 @@ class FirestoreStore:
         control = self.coordinator.get().to_dict() or {}
         reserved = control.get('budget', 0) if control.get('day') == day else 0
         active = sum(deadline > now for deadline in control.get('active', {}).values())
-        return {'used_today': quota.get('count', 0), 'reserved_budget_usd': round(reserved, 4), 'active_audits': active}
+        return usage_status(self.settings, quota.get('count', 0), reserved, active)
 
     def get(self, audit_id):
         row = self.audits.document(audit_id).get().to_dict()
