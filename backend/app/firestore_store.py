@@ -45,6 +45,16 @@ class FirestoreStore:
         admit(self.client.transaction())
         return row, token
 
+    def usage(self, identity):
+        now = time.time()
+        day = day_key(now)
+        ident = hmac.new(self.settings.identity_salt.get_secret_value().encode(), identity.encode(), hashlib.sha256).hexdigest()
+        quota = self.client.collection('quotas').document(day + '-' + ident).get().to_dict() or {}
+        control = self.coordinator.get().to_dict() or {}
+        reserved = control.get('budget', 0) if control.get('day') == day else 0
+        active = sum(deadline > now for deadline in control.get('active', {}).values())
+        return {'used_today': quota.get('count', 0), 'reserved_budget_usd': round(reserved, 4), 'active_audits': active}
+
     def get(self, audit_id):
         row = self.audits.document(audit_id).get().to_dict()
         if row:
