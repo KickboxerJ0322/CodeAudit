@@ -1,5 +1,6 @@
 import asyncio
 import json
+from urllib.parse import quote
 import os
 import shutil
 import signal
@@ -82,7 +83,7 @@ def file_configuration_finding(repo, rule, severity, file, secrets):
     if not instruction or file not in repo.files or Path(file).name.lower() != "dockerfile":
         return None
     code = repo.files[file]
-    if re.search(r"(?im)^\\s*" + instruction + r"\\b", code):
+    if re.search(r"(?im)^\s*" + instruction + r"\b", code):
         return None
     values = dict(source="trivy", rule_id=rule, severity=severity, category="configuration",
                   title=f"Dockerfileに{instruction}設定がありません", file=file,
@@ -91,7 +92,7 @@ def file_configuration_finding(repo, rule, severity, file, secrets):
                   reason=f"Trivyの欠如ルールと照合し、ファイル全体に{instruction}命令がないことを確認しました。ベースイメージや実行環境の設定は別途確認が必要です。",
                   impact="実効ユーザーや稼働状態の確認が不足する可能性があります。悪用可能性は未確認です。",
                   remediation=f"{instruction}の明示設定を検討し、ベースイメージとCloud Run側の設定も確認してください。",
-                  evidence_verified=True, github_url=f"{repo.url}/blob/{repo.sha}/" + __import__("urllib.parse", fromlist=["quote"]).quote(file, safe="/"))
+                  evidence_verified=True, github_url=f"{repo.url}/blob/{repo.sha}/" + quote(file, safe="/"))
     return Finding.model_validate(scrub(values, secrets)).model_dump()
 
 
