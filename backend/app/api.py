@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import json
 import time
 from contextlib import asynccontextmanager
@@ -74,6 +75,18 @@ def create_app(settings=None, store=None, dispatcher=None):
     async def usage(request: Request):
         identity = request.client.host if request.client else "unknown"
         return store.usage(identity)
+
+    @app.post("/api/admin/reset-daily-limits")
+    async def reset_daily_limits(request: Request, authorization: str | None = Header(default=None)):
+        # Disabled until a high-entropy admin credential is configured in Secret Manager.
+        secret = settings.admin_reset_token.get_secret_value()
+        candidate = authorization.removeprefix("Bearer ") if authorization and authorization.startswith("Bearer ") else ""
+        if len(secret) < 32:
+            raise HTTPException(503, "管理者リセットは未設定です")
+        if len(candidate) > 512 or not hmac.compare_digest(candidate, secret):
+            raise HTTPException(403, "管理者認証に失敗しました")
+        day = store.reset_daily_limits()
+        return {"day_jst": day, "message": "本日の回数とAI予算予約額をリセットしました"}
 
     @app.post("/api/audits", status_code=202)
     async def start_audit(payload: AuditRequest, request: Request):
