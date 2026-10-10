@@ -30,6 +30,16 @@ def test_all_segments_preserve_every_line():
         assert ''.join(p['code'] for p in parts if p['file'] == file) == code
 
 
+def test_oversized_single_line_is_losslessly_segmented():
+    source = 'x' * 26001 + '\\n' + 'tail\\n'
+    parts = segments({'long.js': source}, 24000)
+    assert ''.join(part['code'] for part in parts) == source
+    assert all(len(part['code']) <= 24000 for part in parts)
+    assert parts[0]['start_line'] == 1 == parts[0]['end_line']
+    assert parts[1]['start_line'] == 1
+    assert parts[-1]['end_line'] == 2
+
+
 def finding(**changes):
     return AIFinding(severity='high', category='confirmed', title='入力のコード実行', file=changes.get('file', 'a.py'), start_line=changes.get('start_line', 2), end_line=changes.get('end_line', 2), evidence=changes.get('evidence', 'eval(value)'), reason='外部入力が実行されます', impact='コード実行', remediation='evalを除去してください', confidence=.8)
 
