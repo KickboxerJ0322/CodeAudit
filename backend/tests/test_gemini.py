@@ -31,7 +31,7 @@ def test_all_segments_preserve_every_line():
 
 
 def test_oversized_single_line_is_losslessly_segmented():
-    source = 'x' * 26001 + '\\n' + 'tail\\n'
+    source = 'x' * 26001 + chr(10) + 'tail' + chr(10)
     parts = segments({'long.js': source}, 24000)
     assert ''.join(part['code'] for part in parts) == source
     assert all(len(part['code']) <= 24000 for part in parts)
