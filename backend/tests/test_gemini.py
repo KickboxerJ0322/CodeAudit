@@ -105,3 +105,26 @@ def test_truncated_output_is_not_complete(settings):
             with pytest.raises(AuditError, match='打ち切'):
                 await Gemini(settings, client).request('code')
     asyncio.run(run())
+
+def test_structured_json_config_matches_count_and_generation(settings):
+    settings.gemini_api_key = SecretStr('test-key')
+    configs = []
+    def respond(request):
+        payload = json.loads(request.content)
+        body = payload.get('generateContentRequest', payload)
+        config = body['generationConfig']
+        assert config['responseMimeType'] == 'application/json'
+        assert config['responseJsonSchema'] == AIResponse.model_json_schema()
+        assert 'responseFormat' not in config
+        configs.append(config)
+        if request.url.path.endswith(':countTokens'):
+            return httpx.Response(200, json={'totalTokens': 10})
+        value = AIResponse(summary='分析完了', analyzed_segments=[], findings=[]).model_dump_json()
+        return httpx.Response(200, json={'candidates': [{'finishReason': 'STOP', 'content': {'parts': [{'text': value}]}}], 'usageMetadata': {'totalTokenCount': 20}})
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            engine = Gemini(settings, client)
+            result = await engine.request('code')
+            assert result.summary == '分析完了' and engine.used_tokens == 20
+    asyncio.run(run())
+    assert len(configs) == 2 and configs[0] == configs[1]
