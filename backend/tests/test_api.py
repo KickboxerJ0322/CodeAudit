@@ -95,3 +95,24 @@ def test_packaged_ui(client):
     assert response.status_code == 200
     assert 'CodeAudit' in response.text
     assert "script-src 'self'" in response.headers['content-security-policy']
+
+def test_daily_reset_requires_admin_secret(settings):
+    client = TestClient(create_app(settings, dispatcher=NoopDispatcher()))
+    assert client.post("/api/admin/reset-daily-limits").status_code == 503
+    from pydantic import SecretStr
+    settings.admin_reset_token = SecretStr("a" * 40)
+    client = TestClient(create_app(settings, dispatcher=NoopDispatcher()))
+    assert client.post("/api/admin/reset-daily-limits").status_code == 403
+    assert client.post("/api/admin/reset-daily-limits", headers={"Authorization": "Bearer wrong"}).status_code == 403
+
+
+def test_admin_can_reset_daily_quota_and_budget(settings):
+    from pydantic import SecretStr
+    settings.admin_reset_token = SecretStr("a" * 40)
+    client = TestClient(create_app(settings, dispatcher=NoopDispatcher()))
+    created = client.post("/api/audits", json={"repository_url": URL})
+    assert created.status_code == 202
+    assert client.get("/api/usage").json()["used_today"] == 1
+    result = client.post("/api/admin/reset-daily-limits", headers={"Authorization": "Bearer " + "a" * 40})
+    assert result.status_code == 200
+    assert client.get("/api/usage").json()["used_today"] == 0
