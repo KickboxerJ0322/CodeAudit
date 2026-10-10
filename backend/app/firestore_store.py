@@ -30,13 +30,14 @@ class FirestoreStore:
             quota = quota_ref.get(transaction=tx).to_dict() or {}
             active = {k: v for k, v in control.get("active", {}).items() if v > now}
             budget = control.get("budget", 0) if control.get("day") == day else 0
+            daily_limit, daily_budget_usd = self.settings.effective_limits(now)
             if not self.settings.accepting_audits:
                 raise AdmissionError(503, "現在、監査の受付を停止しています")
-            if quota.get("count", 0) >= self.settings.daily_limit:
+            if quota.get("count", 0) >= daily_limit:
                 raise AdmissionError(429, "本日の利用回数上限に達しました")
             if len(active) >= self.settings.concurrency:
                 raise AdmissionError(429, "同時監査の上限に達しています")
-            if budget + self.settings.reservation() > self.settings.daily_budget_usd:
+            if budget + self.settings.reservation() > daily_budget_usd:
                 raise AdmissionError(503, "本日のAI予算上限に達しました")
             active[row["id"]] = row["deadline"]
             tx.set(self.coordinator, {"active": active, "day": day, "budget": budget + self.settings.reservation()})
