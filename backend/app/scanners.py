@@ -65,7 +65,7 @@ def relative_file(value: str, root: Path) -> str:
 def constant_innerhtml_assignment(code: str) -> bool:
     """Recognize only direct constant HTML literals, not variable input."""
     match = re.search(r"\.innerHTML\s*=\s*(['\"\x60])([\s\S]*?)\1\s*;?\s*$", code)
-    return bool(match and (match.group(1) != chr(96) or "\${" not in match.group(2)))
+    return bool(match and (match.group(1) != chr(96) or "${" not in match.group(2)))
 
 
 def make_finding(repo, source, rule, severity, category, title, file, start, end, reason, impact, remediation, secrets):
