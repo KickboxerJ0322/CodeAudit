@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     region: str = "asia-northeast1"
     job_name: str = "codeaudit-worker"
     identity_salt: SecretStr = SecretStr("")
+    admin_reset_token: SecretStr = SecretStr("")
     gemini_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="GEMINI_API_KEY")
     gemini_model: str = "gemini-3.5-flash-lite"
     ai_enabled: bool = True
