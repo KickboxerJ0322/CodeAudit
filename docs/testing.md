@@ -24,11 +24,18 @@ Geminiのテストはモック応答です。解析ツールのJSON統合テス�
 
 ## 検証中・未検証
 
-- Dockerのツール同梱ビルドと実ツールによるrain-map解析：検証中（結果確定後に追記）。
-- Gemini実API：キー未設定のため未実施。
-- Firestore実DB／エミュレータ、Cloud Run Jobs、IAM／WIF／Secret Manager：未実施。
+- Dockerのツール同梱ビルド：Cloud Buildで成功。rain-map実解析は下記参照。
+- Gemini実API：countTokensの実確認と設定修正済み。全体分析の修正版を追加確認中。
+- Firestore実DB保存、Cloud Run Jobs、IAM／WIF／Secret Manager：接続確認済み。
 - ブラウザ自動操作：ツールの環境初期化エラーにより未実施。Phase 1の画面表示は利用者が確認済み。
 - スマートフォン実機、負荷試験、クラウドのIP信頼境界、依存脆弱性・配布notice最終確認：公開前に確認する。
 
-これらの未検証項目を完了扱いにせず、公開準備と分けています。GitHubへのpushやCloud Runデプロイは行っていません。
+未検証項目は完了扱いにしません。現在はGitHubへpush済み、Cloud Runへ配置済みです。
 
+
+## Google Cloud実環境（2026-10-10）
+
+- GitHub上での直接編集とCI成功、Cloud Buildでbackend48件成功・1件skip（frontend/dist未生成）とfrontend3件成功を確認。本番ビルド、pip check、Semgrep7ルール検証も成功。
+- 本番UI・アセット・health、APIから監査Job起動、GitHub取得、Firestore保存を確認。トークンなし／不正404と、正しいトークンでMarkdown／JSON取得を確認。
+- 実rain-map監査は11ファイル。Gitleaks・Semgrep成功。Trivyは根拠の実在行を確認できない指摘を除外したためpartial。GeminiのJSON設定を実countTokens応答に合わせて修正し、再配置・全体分析を追加確認中。
+- Firestoreの監査・quota TTLはACTIVE。24時間経過後の実削除は今後確認。一般公開の許可は利用者から取得済み。

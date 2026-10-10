@@ -24,8 +24,8 @@ spec:
             - {name: CODEAUDIT_DISPATCHER, value: cloud_run}
             - {name: CODEAUDIT_REGION, value: asia-northeast1}
             - {name: CODEAUDIT_JOB_NAME, value: codeaudit-worker}
-            # Keep closed until actual IAM/TTL/tools/Gemini smoke tests pass.
-            - {name: CODEAUDIT_ACCEPTING_AUDITS, value: 'false'}
+            # Public beta intake; limits and viewing-token protection remain enabled.
+            - {name: CODEAUDIT_ACCEPTING_AUDITS, value: 'true'}
             - name: CODEAUDIT_IDENTITY_SALT
               valueFrom:
                 secretKeyRef: {name: codeaudit-identity-salt, key: latest}

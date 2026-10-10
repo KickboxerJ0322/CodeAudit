@@ -5,7 +5,14 @@
 - 開発用リポジトリ： https://github.com/KickboxerJ0322/CodeAudit
 - Google Cloudプロジェクト初期値： `jumpeicloud`
 - 本番のFirestoreデータベース： `codeaudit`（専用）
-- GitHubへのpush・Google Cloudデプロイ・有料リソース作成は未実施です。
+- Webアプリ： https://codeaudit-331230486346.asia-northeast1.run.app
+- コード管理はGitHubのmain、ビルドはCloud Build、実行はCloud Runです。PCでの起動は不要です。
+
+## GitHub上での開発と更新
+
+GitHubでコードを変更し、CI成功後にActionsの「Deploy CodeAudit (manual only)」を開きます。「Run workflow」でmainを選び、confirmationに `DEPLOY` を入力します。WIFでGoogle Cloudへ認証し、Cloud Buildが確定コミットを取得してテスト・イメージ生成を行い、Cloud Runサービスと監査Jobへ配置します。長期サービスアカウントキーは使用しません。
+
+ローカルのコードは初回転送時点のコピーです。以後の変更はGitHubが正本です。下記のローカル起動は必要な場合の参考手順です。
 
 ## 実装済みの機能
 

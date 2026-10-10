@@ -1,58 +1,32 @@
-# GitHub / Google Cloud公開準備
+# CodeAuditクラウド運用
 
-この文書とdeploy配下のファイルは準備用です。現在、push・デプロイ・クラウド資源の作成は行っていません。
+コードの正本は https://github.com/KickboxerJ0322/CodeAudit のmainです。PCではビルドせず、GitHub上で変更してCI・Cloud Buildを使います。
 
-## 対象と設定
+- プロジェクト：jumpeicloud、リージョン：asia-northeast1。
+- Web： https://codeaudit-331230486346.asia-northeast1.run.app
+- Cloud Runサービス：codeaudit、Job：codeaudit-worker。
+- Firestore Native：専用DB codeaudit。audits・quotasのdelete_at TTLはACTIVEを確認済み。report・token_hashの索引は無効化。
+- Artifact Registry：専用repository codeaudit、api/workerはコミットSHAのタグ。
+- Secret Manager：codeaudit-gemini-key、codeaudit-identity-salt。秘密値はGitHubに保存しません。
 
-- GitHub：`KickboxerJ0322/CodeAudit`、mainブランチ。
-- Google Cloud：`jumpeicloud`（GitHub variable `GCP_PROJECT_ID`で変更可能）。
-- リージョン：`asia-northeast1`（`GCP_REGION`で変更可能）。
-- Firestore：Native modeの専用データベース `codeaudit`。
-- Artifact Registry：`codeaudit` リポジトリ。
-- Cloud Runサービス：`codeaudit`、Job：`codeaudit-worker`。
+## 更新手順
 
-`python deploy/render.py --project jumpeicloud --region asia-northeast1 --sha <40桁のコミットSHA>` はYAMLをartifacts/deployに生成するだけで、外部サービスに接続しません。
+1. GitHubのmainでコード変更をコミットし、Test CodeAuditの成功を確認します。
+2. ActionsのDeploy CodeAudit (manual only)でRun workflowを開き、confirmationにDEPLOYを入力します。
+3. WIF認証→Cloud BuildのテストとDockerビルド→JobとWebサービス配置の成功を確認します。
+4. 画面、/api/health、実監査の処理状態を確認します。未検査やAI根拠不一致を完了扱いにしません。
 
-## 公開の指示後に設定するもの
+cloudbuild.yamlはGitHubの確定コミットを直接取得します。ローカルの変更やローカルDockerを使いません。新しいコミットの配置に課金リソースを使うため、手動DEPLOY入力を維持します。
 
-必要なAPI、Artifact Registry、専用Firestore、サービスアカウント、WIF、Secret Manager、TTLを用意します。課金やリソース作成を伴うため、この開発中には実行しません。
+## 認証と権限
 
-| 主体 | 必要な権限・範囲 |
-| --- | --- |
-| codeaudit-api | 専用Firestoreのデータ操作、対象Jobのrun / runWithOverrides、identity-salt秘密へのaccessor |
-| codeaudit-worker | 専用Firestoreのデータ操作、Geminiキーとidentity-salt秘密へのaccessor |
-| codeaudit-deployer | 対象Artifact Registryへのwriter、Cloud Run更新、API／workerアカウントのactAs |
+WIF providerは projects/331230486346/locations/global/workloadIdentityPools/github/providers/codeaudit。GitHub repository_id=1412772297、repository_owner_id=164498916、refs/heads/mainに限定しています。production Environmentからcodeaudit-deployerを使い、長期キーは作成しません。
 
-workerにはサービス／Jobの作成・更新や他システムのSecret閲覧を与えません。FirestoreのAdmin SDKはSecurity Rulesによるドキュメント単位の認可を行わないため、専用DBとIAM条件で範囲を絞り、必要な操作のみ許可します。Cloud Runサービスエージェントのイメージ取得権限も確認します。プロジェクト全体のOwner権限で運用しません。
+- codeaudit-api：専用DBのデータ操作、対象Jobのrun/runWithOverrides、salt Secretのみ。
+- codeaudit-worker：専用DBのデータ操作、専用Geminiキーとsaltのみ。他アプリのSecretやデプロイ権限なし。
+- codeaudit-builder：専用Artifact Registryへの書き込み、Cloud Loggingへのログ出力。
+- codeaudit-deployer：Cloud Build起動、builder/API/workerのactAs、対象サービスとJobの更新、専用Artifact Registryの読み取り。
 
-`deploy/job-invoker-role.yaml`はJob起動用の最小カスタムロール定義です。対象Jobに限定してAPIアカウントに付与します。
+一般公開は2026-10-10に利用者から明示的に許可されました。公開IAMはcodeauditサービスのrun.invokerだけです。監査結果の閲覧・ダウンロードには別途閲覧トークンが必要です。24時間後はAPIが閲覧を拒否し、Firestore TTLが削除します。TTL削除自体は遅延し得ます。
 
-Secret Managerには `codeaudit-gemini-key` と `codeaudit-identity-salt` を作成します。saltは32文字以上の暗号学的乱数です。Geminiキーはworkerだけに渡し、APIはクラウドJobのAI上限を保守的に予約します。APIとworkerのトークン・費用上限設定を一致させてください。
-
-## Workload Identity Federation
-
-GitHubのOIDCを使用します。長期サービスアカウントキーは作成・保存しません。[公式Auth action](https://github.com/google-github-actions/auth)に従い、対象リポジトリとmainブランチに絞った属性条件を設定します。例えば `assertion.repository == 'KickboxerJ0322/CodeAudit' && assertion.ref == 'refs/heads/main'`。可能ならGitHubの不変なrepository_id／repository_owner_idも照合してください。
-
-GitHubのRepository variables：
-
-- `GCP_PROJECT_ID`：jumpeicloud
-- `GCP_REGION`：asia-northeast1
-- `WIF_PROVIDER`：projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL/providers/PROVIDER
-- `GCP_DEPLOY_SERVICE_ACCOUNT`：デプロイ専用アカウント
-
-production Environmentを作成して承認者・mainブランチ制限を設定します。デプロイworkflowはworkflow_dispatchのみで、確認入力がDEPLOYの場合だけ進みます。通常のpush／PRはCIのみです。
-
-## TTLと受付開始の条件
-
-`deploy/firestore.indexes.json`のaudits・quotasのdelete_atをTTL対象にします。reportとtoken_hashをインデックス対象から外します。[Firestore TTL](https://docs.cloud.google.com/firestore/native/docs/ttl)は削除に遅延があるため、API側でもexpires_atを検証し、24時間後は即時に閲覧不可とします。
-
-Cloud Runテンプレートは受付停止で初期配置します。サービスの公開IAM設定もworkflowでは追加しません。以下を実測してから、明示的な公開指示に従って受付と公開アクセスを有効化してください。
-
-1. API→Job起動（[run API](https://docs.cloud.google.com/run/docs/reference/rest/v2/projects.locations.jobs/run)のoverrideで監査IDを渡す）。
-2. Jobの3ツール・Gemini・Firestore保存、時間制限とメモリ制限。
-3. 並列APIからの受付が全体2件に制限されること。
-4. 閲覧トークンなし・不正・期限切れで404となること。
-5. Cloud Runのプロキシ経由のclient IP。偽装X-Forwarded-Forを採用せず、実際の信頼境界に合わせた設定を確認する。
-6. report／quotasのTTL削除、停止・予算超過、失敗時の未検査表示。
-
-クラウド構成の実測は未実施です。Cloud Run／Firestore／Secret Managerは無料枠を超えると課金対象になり得ます。現在のアプリ内費用制限はGeminiの予約上限であり、クラウド全体の課金を停止するものではありません。
+回数・同時実行・トークン・日次Gemini予算は環境変数で制限します。アプリのGemini予算はCloud BuildやCloud Run等のプロジェクト全体課金を止めるものではありません。受付停止はCODEAUDIT_ACCEPTING_AUDITS=falseです。コード変更だけでは自動デプロイせず、手動workflowを実行します。
