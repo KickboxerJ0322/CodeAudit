@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="CODEAUDIT_", env_file=(ROOT / ".env", ROOT / "backend" / ".env"), env_file_encoding="utf-8", extra="ignore", populate_by_name=True)
-    daily_limit: int = Field(default=3, ge=1)
+    daily_limit: int = Field(default=10, ge=1)
     concurrency: int = Field(default=2, ge=1, le=20)
     timeout_seconds: int = Field(default=300, ge=10, le=3600)
     tool_timeout_seconds: int = Field(default=90, ge=1)
