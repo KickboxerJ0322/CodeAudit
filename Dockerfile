@@ -18,7 +18,7 @@ COPY LICENSE /app/LICENSE
 RUN useradd --uid 10001 --create-home audit && mkdir -p /app/.audit-work && chown -R audit:audit /app/.audit-work
 USER 10001
 EXPOSE 8080
-CMD ["sh", "-c", "exec python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips='127.0.0.1'"]
+CMD ["sh", "-c", "exec python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS:-127.0.0.1}"]
 
 FROM runtime AS api
 COPY backend/app ./app

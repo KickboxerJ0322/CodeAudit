@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 from pydantic import SecretStr
-from app.gemini import Gemini, analyze, segments, validate_finding
+from app.gemini import Gemini, analyze, generation_schema, segments, validate_finding
 from app.models import AIFinding, AIResponse
 from app.redaction import mask, scrub
 from app.repository import AuditError, Repository
@@ -114,7 +114,7 @@ def test_structured_json_config_matches_count_and_generation(settings):
         body = payload.get('generateContentRequest', payload)
         config = body['generationConfig']
         assert config['responseMimeType'] == 'application/json'
-        assert config['responseJsonSchema'] == AIResponse.model_json_schema()
+        assert config['responseJsonSchema'] == generation_schema()
         assert 'responseFormat' not in config
         configs.append(config)
         if request.url.path.endswith(':countTokens'):
@@ -128,3 +128,16 @@ def test_structured_json_config_matches_count_and_generation(settings):
             assert result.summary == '分析完了' and engine.used_tokens == 20
     asyncio.run(run())
     assert len(configs) == 2 and configs[0] == configs[1]
+
+def test_generation_schema_keeps_title_field_and_local_bounds():
+    from pydantic import ValidationError
+    schema = generation_schema()
+    finding_schema = schema['$defs']['AIFinding']
+    assert 'title' in finding_schema['properties'] and 'title' in finding_schema['required']
+    assert 'maxItems' not in json.dumps(schema) and 'maxLength' not in json.dumps(schema)
+    with pytest.raises(ValidationError):
+        AIResponse.model_validate({'summary': 'x' * 5001, 'analyzed_segments': [], 'findings': []})
+    values = finding().model_dump()
+    values['title'] = 'x' * 301
+    with pytest.raises(ValidationError):
+        AIFinding.model_validate(values)
