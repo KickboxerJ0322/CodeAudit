@@ -55,6 +55,8 @@ def test_usage_reflects_admission_limit(settings):
     settings.daily_limit = 10
     settings.daily_budget_usd = 10
     settings.concurrency = 2
+    from pydantic import SecretStr
+    settings.gemini_api_key = SecretStr("test-key")
     result = usage_status(settings, 1, 0.6, 0)
     assert result["can_start"] is True
     assert result["remaining_today"] == 9
