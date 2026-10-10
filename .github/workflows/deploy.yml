@@ -1,5 +1,9 @@
-name: Deploy CodeAudit (manual only)
+name: Deploy CodeAudit (CI success or manual)
 on:
+  workflow_run:
+    workflows: ['Test CodeAudit']
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       confirmation:
@@ -13,7 +17,14 @@ concurrency:
   cancel-in-progress: false
 jobs:
   deploy:
-    if: github.repository == 'KickboxerJ0322/CodeAudit' && github.ref == 'refs/heads/main' && inputs.confirmation == 'DEPLOY'
+    if: >-
+      github.repository == 'KickboxerJ0322/CodeAudit' &&
+      ((github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == 'KickboxerJ0322/CodeAudit') ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirmation == 'DEPLOY'))
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -24,6 +35,10 @@ jobs:
       REGION: ${{ vars.GCP_REGION || 'asia-northeast1' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      - name: Resolve verified revision
+        run: echo "DEPLOY_SHA=${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_ENV"
       - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: projects/331230486346/locations/global/workloadIdentityPools/github/providers/codeaudit
@@ -31,10 +46,10 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v3
       - name: Test and build on Google Cloud
         run: |
-          gcloud builds submit --no-source --config cloudbuild.yaml --project "$PROJECT_ID" --region "$REGION" --service-account "projects/$PROJECT_ID/serviceAccounts/codeaudit-builder@$PROJECT_ID.iam.gserviceaccount.com" --substitutions "_REGION=$REGION,_COMMIT_SHA=$GITHUB_SHA"
+          gcloud builds submit --no-source --config cloudbuild.yaml --project "$PROJECT_ID" --region "$REGION" --service-account "projects/$PROJECT_ID/serviceAccounts/codeaudit-builder@$PROJECT_ID.iam.gserviceaccount.com" --substitutions "_REGION=$REGION,_COMMIT_SHA=$DEPLOY_SHA"
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - run: python deploy/render.py --project "$PROJECT_ID" --region "$REGION" --sha "$GITHUB_SHA"
+      - run: python deploy/render.py --project "$PROJECT_ID" --region "$REGION" --sha "$DEPLOY_SHA"
       - name: Deploy worker and API (private by default, intake closed)
         run: |
           gcloud run jobs replace artifacts/deploy/job.yaml --project "$PROJECT_ID" --region "$REGION"
