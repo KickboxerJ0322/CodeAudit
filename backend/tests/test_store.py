@@ -48,3 +48,31 @@ def test_stale_job_is_failed_and_cannot_resurrect(settings):
     assert store.get(row["id"])["status"] == "failed"
     store.update(row["id"], status="completed")
     assert store.get(row["id"])["status"] == "failed"
+
+
+def test_usage_reflects_admission_limit(settings):
+    from app.store import usage_status
+    settings.daily_limit = 10
+    settings.daily_budget_usd = 10
+    settings.concurrency = 2
+    result = usage_status(settings, 1, 0.6, 0)
+    assert result["can_start"] is True
+    assert result["remaining_today"] == 9
+    assert result["identity_scope"] == "server_network"
+    assert result["budget_scope"] == "all_users"
+
+    assert usage_status(settings, 10, 0, 0)["block_code"] == "daily_limit"
+    assert usage_status(settings, 1, 0, 2)["block_code"] == "concurrency"
+    assert usage_status(settings, 1, 10, 0)["block_code"] == "daily_budget"
+    settings.accepting_audits = False
+    assert usage_status(settings, 1, 0, 0)["block_code"] == "intake_closed"
+
+
+def test_usage_shares_quota_across_sqlite_instances(settings):
+    first = SQLiteStore(settings)
+    assert first.usage("same-network")["used_today"] == 0
+    row, _ = first.create("https://github.com/a/b", "same-network")
+    first.update(row["id"], status="partial")
+    second = SQLiteStore(settings)
+    assert second.usage("same-network")["used_today"] == 1
+    assert second.usage("other-network")["used_today"] == 0
