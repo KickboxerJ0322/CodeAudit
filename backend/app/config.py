@@ -38,11 +38,11 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.5-flash-lite"
     ai_enabled: bool = True
     ai_chunk_chars: int = Field(default=48000, ge=1000, le=100000)
-    ai_max_total_tokens: int = Field(default=360000, ge=1000)
+    ai_max_total_tokens: int = Field(default=720000, ge=1000)
     ai_max_output_tokens: int = Field(default=6000, ge=100, le=16000)
     ai_max_calls: int = Field(default=64, ge=2, le=100)
     ai_price_ceiling_per_million: float = Field(default=20.0, gt=0)
-    ai_max_cost_usd: float = Field(default=3.0, gt=0)
+    ai_max_cost_usd: float = Field(default=4.0, gt=0)
     daily_budget_usd: float = Field(default=10.0, gt=0)
     gitleaks_bin: str = "gitleaks"
     semgrep_bin: str = "semgrep"
