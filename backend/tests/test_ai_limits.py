@@ -140,6 +140,6 @@ def test_daily_reservation_uses_new_per_audit_ceiling(settings):
     settings.gemini_api_key = SecretStr("test-key")
     assert settings.reservation() == 4.0
     assert settings.daily_limit == 20
-    assert settings.daily_budget_usd == 10.0
+    assert settings.daily_budget_usd == 80.0
     settings.ai_enabled = False
     assert settings.reservation() == 0.0

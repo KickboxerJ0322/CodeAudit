@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     ai_max_calls: int = Field(default=64, ge=2, le=100)
     ai_price_ceiling_per_million: float = Field(default=20.0, gt=0)
     ai_max_cost_usd: float = Field(default=4.0, gt=0)
-    daily_budget_usd: float = Field(default=10.0, gt=0)
+    daily_budget_usd: float = Field(default=80.0, gt=0)
     gitleaks_bin: str = "gitleaks"
     semgrep_bin: str = "semgrep"
     trivy_bin: str = "trivy"

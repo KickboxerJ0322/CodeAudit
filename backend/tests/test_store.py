@@ -88,7 +88,37 @@ def test_temporary_allowance_is_jst_calendar_day(settings):
     during = datetime(2026, 10, 11, 0, 0, 0, tzinfo=jst).timestamp()
     ending = datetime(2026, 10, 11, 23, 59, 59, tzinfo=jst).timestamp()
     after = datetime(2026, 10, 12, 0, 0, 0, tzinfo=jst).timestamp()
-    assert settings.effective_limits(before) == (20, 10.0)
+    assert settings.effective_limits(before) == (20, 80.0)
     assert settings.effective_limits(during) == (20, 60.0)
     assert settings.effective_limits(ending) == (20, 60.0)
-    assert settings.effective_limits(after) == (20, 10.0)
+    assert settings.effective_limits(after) == (20, 80.0)
+
+
+def test_expanded_daily_budget_allows_twenty_reservations_and_stops_at_limit(settings):
+    from pydantic import SecretStr
+    settings.gemini_api_key = SecretStr("test-key")
+    settings.temporary_limit_date_jst = "2099-01-01"
+    assert settings.daily_budget_usd == 80.0
+    assert settings.daily_limit == 20
+    assert settings.reservation() == 4.0
+    store = SQLiteStore(settings)
+    for index in range(20):
+        row, _ = store.create("https://github.com/a/b", str(index))
+        store.update(row["id"], status="completed")
+    usage = store.usage("another-network")
+    assert usage["reserved_budget_usd"] == 80.0
+    assert usage["block_code"] == "daily_budget"
+    with pytest.raises(AdmissionError) as error:
+        store.create("https://github.com/a/b", "another-network")
+    assert error.value.status == 503
+
+
+def test_cloud_price_expanded_budget_accepts_after_previous_stop(settings):
+    from pydantic import SecretStr
+    from app.store import usage_status
+    settings.gemini_api_key = SecretStr("test-key")
+    settings.temporary_limit_date_jst = "2099-01-01"
+    settings.ai_price_ceiling_per_million = 5
+    assert settings.reservation() == 3.6
+    assert usage_status(settings, 1, 7.2, 0)["can_start"]
+    assert not usage_status(settings, 1, 79.2, 0)["can_start"]
