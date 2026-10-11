@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="CODEAUDIT_", env_file=(ROOT / ".env", ROOT / "backend" / ".env"), env_file_encoding="utf-8", extra="ignore", populate_by_name=True)
     daily_limit: int = Field(default=10, ge=1)
     temporary_limit_date_jst: str = "2026-10-11"
-    temporary_daily_limit: int = Field(default=30, ge=1)
-    temporary_daily_budget_usd: float = Field(default=30.0, gt=0)
+    temporary_daily_limit: int = Field(default=60, ge=1)
+    temporary_daily_budget_usd: float = Field(default=60.0, gt=0)
     concurrency: int = Field(default=2, ge=1, le=20)
     timeout_seconds: int = Field(default=300, ge=10, le=3600)
     tool_timeout_seconds: int = Field(default=90, ge=1)
