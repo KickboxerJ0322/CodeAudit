@@ -88,6 +88,6 @@ def test_temporary_allowance_is_jst_calendar_day(settings):
     ending = datetime(2026, 10, 11, 23, 59, 59, tzinfo=jst).timestamp()
     after = datetime(2026, 10, 12, 0, 0, 0, tzinfo=jst).timestamp()
     assert settings.effective_limits(before) == (10, 10.0)
-    assert settings.effective_limits(during) == (30, 30.0)
-    assert settings.effective_limits(ending) == (30, 30.0)
+    assert settings.effective_limits(during) == (60, 60.0)
+    assert settings.effective_limits(ending) == (60, 60.0)
     assert settings.effective_limits(after) == (10, 10.0)
