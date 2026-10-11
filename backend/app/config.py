@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     temporary_daily_limit: int = Field(default=60, ge=1)
     temporary_daily_budget_usd: float = Field(default=60.0, gt=0)
     concurrency: int = Field(default=2, ge=1, le=20)
-    timeout_seconds: int = Field(default=300, ge=10, le=3600)
+    timeout_seconds: int = Field(default=780, ge=10, le=3600)
     tool_timeout_seconds: int = Field(default=90, ge=1)
     max_repository_mb: int = Field(default=20, ge=1)
     max_file_bytes: int = Field(default=512_000, ge=100)
@@ -37,10 +37,10 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="GEMINI_API_KEY")
     gemini_model: str = "gemini-3.5-flash-lite"
     ai_enabled: bool = True
-    ai_chunk_chars: int = Field(default=24000, ge=1000, le=100000)
-    ai_max_total_tokens: int = Field(default=120000, ge=1000)
+    ai_chunk_chars: int = Field(default=48000, ge=1000, le=100000)
+    ai_max_total_tokens: int = Field(default=360000, ge=1000)
     ai_max_output_tokens: int = Field(default=6000, ge=100, le=16000)
-    ai_max_calls: int = Field(default=24, ge=2, le=100)
+    ai_max_calls: int = Field(default=64, ge=2, le=100)
     ai_price_ceiling_per_million: float = Field(default=20.0, gt=0)
     ai_max_cost_usd: float = Field(default=3.0, gt=0)
     daily_budget_usd: float = Field(default=10.0, gt=0)
