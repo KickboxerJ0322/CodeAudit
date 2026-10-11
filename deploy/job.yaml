@@ -21,6 +21,7 @@ spec:
                 - {name: CODEAUDIT_STORE, value: firestore}
                 - {name: CODEAUDIT_FIRESTORE_DATABASE, value: codeaudit}
                 - {name: CODEAUDIT_TIMEOUT_SECONDS, value: '780'}
+                - {name: CODEAUDIT_DAILY_LIMIT, value: '20'}
                 - {name: CODEAUDIT_DAILY_BUDGET_USD, value: '10'}
                 - {name: CODEAUDIT_AI_PRICE_CEILING_PER_MILLION, value: '5'}
                 - {name: CODEAUDIT_AI_MAX_TOTAL_TOKENS, value: '720000'}

@@ -19,6 +19,8 @@ def test_deployed_limits_match_defaults():
     root = Path(__file__).resolve().parents[2]
     for name in ("job.yaml", "service.yaml"):
         text = (root / "deploy" / name).read_text()
+        daily = re.search(r"CODEAUDIT_DAILY_LIMIT, value: '([^']+)'", text)
+        assert daily is not None and int(daily.group(1)) == settings.daily_limit
         for key, expected in (("TOTAL_TOKENS", settings.ai_max_total_tokens),
                               ("COST_USD", settings.ai_max_cost_usd)):
             value = re.search(r"CODEAUDIT_AI_MAX_" + key + r", value: '([^']+)'", text)
@@ -137,7 +139,7 @@ def test_cross_file_call_is_included_in_preflight(settings, tmp_path):
 def test_daily_reservation_uses_new_per_audit_ceiling(settings):
     settings.gemini_api_key = SecretStr("test-key")
     assert settings.reservation() == 4.0
-    assert settings.daily_limit == 10
+    assert settings.daily_limit == 20
     assert settings.daily_budget_usd == 10.0
     settings.ai_enabled = False
     assert settings.reservation() == 0.0
