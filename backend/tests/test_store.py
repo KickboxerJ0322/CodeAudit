@@ -32,6 +32,7 @@ def test_budget_reservation_and_no_refund_on_failure(settings):
     from pydantic import SecretStr
     settings.gemini_api_key = SecretStr("test-key")
     settings.daily_budget_usd = 3.0
+    settings.temporary_limit_date_jst = "2099-01-01"
     store = SQLiteStore(settings)
     row, _ = store.create("https://github.com/a/b", "first")
     store.update(row["id"], status="failed")
