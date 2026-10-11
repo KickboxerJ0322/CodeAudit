@@ -28,9 +28,10 @@ spec:
             # Selected model's text output is $2.50/M at standard tier (2026-10-10).
             - {name: CODEAUDIT_DAILY_BUDGET_USD, value: '10'}
             - {name: CODEAUDIT_DAILY_LIMIT, value: '10'}
-            - {name: CODEAUDIT_AI_MAX_TOTAL_TOKENS, value: '120000'}
+            - {name: CODEAUDIT_AI_MAX_TOTAL_TOKENS, value: '360000'}
             - {name: CODEAUDIT_AI_MAX_COST_USD, value: '3'}
             - {name: CODEAUDIT_AI_PRICE_CEILING_PER_MILLION, value: '5'}
+            - {name: CODEAUDIT_TIMEOUT_SECONDS, value: '780'}
             - {name: CODEAUDIT_JOB_NAME, value: codeaudit-worker}
             # Public beta intake; limits and viewing-token protection remain enabled.
             - {name: CODEAUDIT_ACCEPTING_AUDITS, value: 'true'}
