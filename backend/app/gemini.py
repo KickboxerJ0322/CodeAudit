@@ -181,7 +181,7 @@ async def analyze(repo: Repository, static: list[dict], secrets: list[str], sett
         metadata["segment_manifest"] = [{k: part[k] for k in ("id", "file", "start_line", "end_line")} for part in parts]
         groups = batches(parts, settings.ai_chunk_chars)
         if len(groups) + 1 > settings.ai_max_calls:
-            raise AuditError("全ファイルの分析に必要なAI回数が上限を超えるため、AI処理を開始しません")
+            raise AuditError(f"全ファイルの分析には{len(groups) + 1}回のAI呼び出しが必要ですが、設定上限は{settings.ai_max_calls}回です。ファイル数・分割数を確認してください。AI処理を開始しません")
         expected = {part["id"] for part in parts}
         structure = [{"file": file, "lines": len(text.splitlines())} for file, text in masked.items()]
         for group in groups:
