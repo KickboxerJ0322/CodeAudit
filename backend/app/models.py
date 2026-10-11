@@ -57,8 +57,37 @@ class AIFinding(BaseModel):
     confidence: float = Field(ge=0, le=1)
 
 
+class ResearchRange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    file: str = Field(min_length=1, max_length=300)
+    start_line: int = Field(ge=1)
+    end_line: int = Field(ge=1)
+
+
+class ResearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target_id: str = Field(min_length=1, max_length=30)
+    question: str = Field(min_length=1, max_length=500)
+    ranges: list[ResearchRange] = Field(min_length=1, max_length=3)
+
+
+class ResearchEvidence(ResearchRange):
+    quote: str = Field(min_length=1, max_length=2000)
+
+
+class ResearchDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    request_id: str = Field(min_length=1, max_length=30)
+    verdict: Literal["retain", "withdraw", "uncertain"]
+    explanation: str = Field(min_length=1, max_length=1000)
+    evidence: list[ResearchEvidence] = Field(min_length=1, max_length=3)
+
+
 class AIResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     summary: str = Field(max_length=5000)
     analyzed_segments: list[str] = Field(max_length=10000)
     findings: list[AIFinding] = Field(max_length=100)
+
+    research_requests: list[ResearchRequest] = Field(default_factory=list, max_length=3)
+    research_decisions: list[ResearchDecision] = Field(default_factory=list, max_length=3)

@@ -78,3 +78,11 @@ def test_stale_orphan_removed_but_active_work_preserved(settings):
     os.utime(stale, (old, old))
     cleanup_orphans(settings)
     assert not stale.exists() and active.exists()
+
+def test_processing_metrics_are_recorded(settings):
+    store = SQLiteStore(settings)
+    row, _ = store.create('https://github.com/a/b', 'metrics')
+    asyncio.run(run_audit(row['id'], store, settings, fetcher=fake_fetch, scanner=failed_tools))
+    report = store.get(row['id'])['report']
+    assert report['target_line_count'] == 1
+    assert report['duration_seconds'] >= 0

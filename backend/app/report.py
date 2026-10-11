@@ -69,6 +69,27 @@ def markdown(report):
     lines = ["# CodeAudit 監査レポート", "", f"- 対象：{plain(report['repository_url'])}", f"- コミットSHA：{report['commit_sha'] or '取得失敗'}",
              f"- 監査日時：{report['audited_at']}", f"- 閲覧期限：{report['expires_at']}", f"- 状態：{STATUS.get(report['status'], report['status'])}",
              f"- 分析対象：{report['analyzed_file_count']}ファイル / 除外：{report['excluded_file_count']}ファイル", "", plain(report["disclaimer"]), "", "## 監査範囲"]
+    ai = report["ai"]
+    def metric(value):
+        return "未計測" if value is None else str(value)
+    lines += ["", "## 処理量・費用",
+              f"- 対象テキスト：{metric(report.get('target_line_count'))}行（設定・文書を含む）",
+              f"- 所要時間：{metric(report.get('duration_seconds'))}秒",
+              f"- モデル：{plain(ai.get('model', '未記録'))}",
+              f"- AI生成：{metric(ai.get('calls'))}回 / 追加調査：{metric(ai.get('research_rounds'))}回",
+              f"- 入力：{metric(ai.get('input_tokens'))} / 出力・思考：{metric(ai.get('output_tokens'))}トークン",
+              f"- 上限判定用トークン：{metric(ai.get('tokens'))}（失敗時の予約を含む場合あり）",
+              f"- 推定API費用：{metric(ai.get('estimated_api_cost_usd'))} USD（算出不可の場合は未計測）",
+              f"- 上限判定用の保守的金額：{metric(ai.get('budget_estimate_usd'))} USD",
+              plain(ai.get('price_basis', '旧レポートには計測情報がありません。')),
+              "推定API費用は日次予約額・実請求額とは別です。", "", "## 監査の判断履歴"]
+    for event in ai.get("decision_history", []):
+        lines.append(f"- {plain(event['stage'])}：{plain(event['message'])} / {plain(event.get('action', ''))}")
+        for location in event.get("ranges", []):
+            lines.append(f"  - {plain(location['file'])}:{location['start_line']}-{location['end_line']}")
+    if not ai.get("decision_history"):
+        lines.append("判断履歴は未記録です。")
+    lines += ["", "## 検査ツール"]
     for tool in report["tools"]:
         lines.append(f"- {tool['tool']}：{tool['status']} / {plain(tool['message'])} / {plain(tool['rule_scope'])}")
     lines.append(f"- 根拠不一致で除外したAI指摘：{report['ai'].get('rejected_findings', 0)}件（分析完了状況とは別集計）")

@@ -28,6 +28,7 @@ async def run_audit(audit_id, store, settings, fetcher=fetch_repository, scanner
     if not store.claim(audit_id):
         return
     row = store.get(audit_id)
+    started = time.monotonic()
     report = report_base(row)
     steps = row["steps"].copy()
     work = None
@@ -45,7 +46,8 @@ async def run_audit(audit_id, store, settings, fetcher=fetch_repository, scanner
             repo = await fetcher(row["repository_url"], work, settings)
             report.update(commit_sha=repo.sha, files=sorted(repo.files), excluded_files=repo.excluded,
                           analyzed_file_count=len(repo.files), excluded_file_count=len(repo.excluded),
-                          archive_bytes=repo.archive_bytes, expanded_bytes=repo.expanded_bytes)
+                          archive_bytes=repo.archive_bytes, expanded_bytes=repo.expanded_bytes,
+                          target_line_count=sum(len(t.splitlines()) for t in repo.files.values()))
             progress("github", "completed", "GitHub取得が完了しました")
             progress("static", "running", "静的解析ツールで検査しています")
             static, tools, secrets = await scanner(repo, work, settings)
@@ -68,6 +70,7 @@ async def run_audit(audit_id, store, settings, fetcher=fetch_repository, scanner
             report["warnings"].append("秘密情報のマスキングは可能な範囲で行っています。未知の秘密形式を完全には検出できません。")
             # Store only masked strings, never source files, raw tool JSON or credentials.
             report = scrub(report, secrets)
+            report["duration_seconds"] = round(time.monotonic() - started, 3)
             finish_report(report)
             if len(json.dumps(report, ensure_ascii=False).encode()) > settings.max_report_bytes:
                 raise AuditError("レポート容量の上限を超えました。監査結果を省略して完了扱いにはしません")
@@ -82,6 +85,7 @@ async def run_audit(audit_id, store, settings, fetcher=fetch_repository, scanner
         if len(json.dumps(report, ensure_ascii=False).encode()) > settings.max_report_bytes:
             report = report_base(row)
             report.update(summary=message, warnings=[message])
+        report["duration_seconds"] = round(time.monotonic() - started, 3)
         store.update(audit_id, status="failed", message=message, steps=steps, report=finish_report(report))
     except asyncio.CancelledError:
         store.update(audit_id, status="failed", message="ワーカーが中断されました。監査は未完了です", steps={k: "failed" if v in {"pending", "running"} else v for k, v in steps.items()})
