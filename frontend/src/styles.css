@@ -10,3 +10,7 @@
 
 /* Home information uses the same size as the explanatory text. */
 .bottom-grid h2,.bottom-grid .limits,.bottom-grid .limits strong{font-size:13px}
+
+/* Keep home cards top-aligned and sized to their own content. */
+.bottom-grid{align-items:start}
+.bottom-grid>.panel+.panel{margin-top:0}
