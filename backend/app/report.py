@@ -92,6 +92,8 @@ def markdown(report):
     lines += ["", "## 検査ツール"]
     for tool in report["tools"]:
         lines.append(f"- {tool['tool']}：{tool['status']} / {plain(tool['message'])} / {plain(tool['rule_scope'])}")
+        for finding in tool.get("not_applicable_findings", []):
+            lines.append(f"- 適用対象外：{plain(finding['rule_id'])} / {plain(finding['file'])} / {plain(finding['reason'])}")
     lines.append(f"- 根拠不一致で除外したAI指摘：{report['ai'].get('rejected_findings', 0)}件（分析完了状況とは別集計）")
     for diagnostic in report["ai"].get("coverage_diagnostics", []):
         lines.append(f"- 分析範囲照合：{diagnostic['stage']} / 不足ID：{plain(', '.join(diagnostic['missing_ids']))} / 不明ID：{len(diagnostic['unexpected_id_hashes'])}件")

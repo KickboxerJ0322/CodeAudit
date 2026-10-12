@@ -31,3 +31,16 @@ IP制限は同一NATで共有され、IP変更で回避可能。Cloud Runの実�
 ## 本番公開前
 
 Gemini実応答、Firestore競合とTTL、Cloud Run Job、IAMの最小権限、Secret Manager、WIF、Cloud Run client IP、実機UI、依存脆弱性、LGPLを含む配布noticeを実測・確認する。未検証事項はtesting.mdに記載する。GitHubへのpush・クラウド公開は明示的な指示後に行う。
+
+
+## Cloud Run構成とヘルスチェック
+
+API/localイメージはDocker HEALTHCHECKでローカルの /api/health を確認します。Cloud Run APIサービスは同じエンドポイントをstartupProbe・livenessProbeで確認します。外部APIや秘密情報を使わない稼働確認です。
+
+HTTPを提供しない有限Worker JobはHEALTHCHECK NONEとし、Cloud Runの終了状態・期限・再試行制限で管理します。全イメージの実行ユーザーはUID 10001です。
+
+TrivyのKSV-0110（Kubernetes namespace）とKSV-0118（Kubernetes securityContext）は、明確な単一ドキュメントのapiVersion: run.googleapis.com/v1 / kind: Jobにだけ適用対象外として記録します。Kubernetes Job、複数ドキュメント、不明な形式、他のルールは除外しません。リポジトリ側のignore指定による検査抑止も引き続き許可しません。
+
+公式のルール説明：
+- https://avd.aquasec.com/misconfig/kubernetes/general/ksv-0110/
+- https://avd.aquasec.com/misconfig/kubernetes/general/ksv-0118/

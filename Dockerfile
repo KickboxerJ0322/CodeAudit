@@ -18,6 +18,8 @@ COPY LICENSE /app/LICENSE
 RUN useradd --uid 10001 --create-home audit && mkdir -p /app/.audit-work && chown -R audit:audit /app/.audit-work
 USER 10001
 EXPOSE 8080
+# API/local: check loopback only, without credentials.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '8080') + '/api/health', timeout=3)"
 CMD ["sh", "-c", "exec python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS:-127.0.0.1}"]
 
 FROM runtime AS api
@@ -40,4 +42,6 @@ COPY backend/app ./app
 COPY backend/scripts ./scripts
 
 FROM local AS worker
+# Finite jobs have no HTTP listener; Cloud Run tracks their exit status.
+HEALTHCHECK NONE
 CMD ["python", "-m", "app.worker"]

@@ -104,6 +104,20 @@ def file_configuration_finding(repo, rule, severity, file, secrets):
     return Finding.model_validate(scrub(values, secrets)).model_dump()
 
 
+def cloud_run_job_rule_not_applicable(repo, file, rule):
+    """Keep Kubernetes checks; exclude two inapplicable rules for clear Cloud Run Jobs."""
+    if rule.upper().removeprefix("AVD-") not in {"KSV-0110", "KSV-0118"}:
+        return False
+    text = repo.files.get(file, "")
+    if re.search(r"(?m)^\s*(?:---|\.\.\.)\s*(?:#.*)?$", text):
+        return False
+    versions = re.findall(r"(?m)^apiVersion:\s*['\"]?([\w./-]+)['\"]?\s*(?:#.*)?$", text)
+    kinds = re.findall(r"(?m)^kind:\s*['\"]?([\w]+)['\"]?\s*(?:#.*)?$", text)
+    if len(re.findall(r"(?m)^apiVersion\s*:", text)) != 1 or len(re.findall(r"(?m)^kind\s*:", text)) != 1:
+        return False
+    return versions == ["run.googleapis.com/v1"] and kinds == ["Job"]
+
+
 async def scan(repo: Repository, work: Path, settings: Settings) -> tuple[list[dict], list[dict], list[str]]:
     findings, statuses, secrets = [], [], []
     root = work / "scan-source"
@@ -124,7 +138,7 @@ async def scan(repo: Repository, work: Path, settings: Settings) -> tuple[list[d
     rules = Path(__file__).parent / "rules" / "security.yml"
     for tool, binary in [("gitleaks", settings.gitleaks_bin), ("semgrep", settings.semgrep_bin), ("trivy", settings.trivy_bin)]:
         executable = shutil.which(binary)
-        status = {"tool": tool, "status": "failed", "message": "", "scanned_files": [], "unscanned_files": [], "rule_scope": "", "rejected_findings": 0, "location_diagnostics": []}
+        status = {"tool": tool, "status": "failed", "message": "", "scanned_files": [], "unscanned_files": [], "rule_scope": "", "rejected_findings": 0, "location_diagnostics": [], "not_applicable_findings": []}
         statuses.append(status)
         if not executable:
             status.update(status="unavailable", message="ツール未導入のため未検査です")
@@ -187,6 +201,13 @@ async def scan(repo: Repository, work: Path, settings: Settings) -> tuple[list[d
                         raw_findings.append((rule, str(item.get("Severity", "MEDIUM")).lower(), "confirmed", f"依存ライブラリに既知の脆弱性：{rule}", name, line, line, f"{package} の検出バージョン {item.get('InstalledVersion', '')} は脆弱性DBに掲載されています。コードから到達するかは未確認です。", "脆弱な機能を利用している場合、情報漏えいやサービス停止につながる可能性があります。", f"修正版 {item.get('FixedVersion') or '未提供'} を確認し、更新後に互換性をテストしてください。"))
                     for item in result.get("Misconfigurations", []) or []:
                         cause = item.get("CauseMetadata", {})
+                        rule = item.get("ID", "configuration")
+                        name = relative_file(file, root)
+                        if cloud_run_job_rule_not_applicable(repo, name, rule):
+                            status["not_applicable_findings"].append({
+                                "rule_id": mask(rule, secrets)[:200], "file": name,
+                                "reason": "Cloud Run JobにはKubernetesのnamespace/securityContextルールを適用しません"})
+                            continue
                         raw_findings.append((item.get("ID", "configuration"), str(item.get("Severity", "MEDIUM")).lower(), "configuration", "構成ファイルのセキュリティ設定を確認してください", file, int(cause.get("StartLine", 0)), int(cause.get("EndLine", 0)), "Trivyの構成ルールに一致しました。運用環境への適用状況を確認してください。", "公開範囲や権限の設定により、アクセス範囲が広がる可能性があります。", "該当設定を最小権限・最小公開範囲に見直してください。"))
             for rule, severity, category, title, file, start, end, reason, impact, remediation in raw_findings:
                 if severity not in {"critical", "high", "medium", "low", "info"}:

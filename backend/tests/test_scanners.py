@@ -57,3 +57,48 @@ def test_actual_trivy_absence_rule_ids(tmp_path):
     for rule in ('DS-0002', 'DS-0026'):
         item = file_configuration_finding(target, rule, 'high', 'Dockerfile', [])
         assert item['evidence_scope'] == 'file'
+
+
+def test_cloud_run_filter_is_narrow_and_preserves_kubernetes(tmp_path):
+    from app.scanners import cloud_run_job_rule_not_applicable
+    repo = Repository('https://github.com/a/b', 'a' * 40, tmp_path,
+                      {'job.yaml': 'apiVersion: run.googleapis.com/v1\nkind: Job\nmetadata:\n  name: worker\n'}, [], 10, 10)
+    for rule in ('KSV-0110', 'KSV-0118', 'AVD-KSV-0118'):
+        assert cloud_run_job_rule_not_applicable(repo, 'job.yaml', rule)
+    assert not cloud_run_job_rule_not_applicable(repo, 'job.yaml', 'KSV-0001')
+    assert not cloud_run_job_rule_not_applicable(repo, 'missing.yaml', 'KSV-0118')
+    original = repo.files['job.yaml']
+    for source in (original.replace('run.googleapis.com/v1', 'batch/v1'),
+                   original + '---\napiVersion: batch/v1\nkind: Job\n',
+                   original + 'kind: Job\n',
+                   original.replace('run.googleapis.com/v1', 'unknown/v1')):
+        repo.files['job.yaml'] = source
+        assert not cloud_run_job_rule_not_applicable(repo, 'job.yaml', 'KSV-0118')
+
+
+def test_nonapplicable_checks_are_recorded_not_silently_ignored(settings, tmp_path, monkeypatch):
+    files = {'job.yaml': 'apiVersion: run.googleapis.com/v1\nkind: Job\nmetadata:\n  name: worker\n',
+             'k8s.yaml': 'apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: worker\n'}
+    repo = Repository('https://github.com/a/b', 'a' * 40, tmp_path / 'source', files, [], 100, 100)
+    monkeypatch.setattr('app.scanners.shutil.which', lambda name: name)
+
+    async def process(args, work, timeout, report):
+        if args[0] == 'gitleaks':
+            result = []
+        elif args[0] == 'semgrep':
+            result = {'results': [], 'paths': {'scanned': []}, 'errors': []}
+        else:
+            checks = [{'ID': rule, 'Severity': 'HIGH', 'CauseMetadata': {'StartLine': 1, 'EndLine': 4}}
+                      for rule in ('KSV-0110', 'KSV-0118', 'KSV-0001')]
+            result = {'SchemaVersion': 2, 'Results': [
+                {'Target': name, 'Misconfigurations': checks} for name in files]}
+        report.write_text(json.dumps(result))
+        return 0
+    monkeypatch.setattr('app.scanners.run_process', process)
+    findings, tools, _ = asyncio.run(scan(repo, tmp_path, settings))
+    assert len(findings) == 4
+    assert len([f for f in findings if f['file'] == 'k8s.yaml']) == 3
+    trivy = next(t for t in tools if t['tool'] == 'trivy')
+    assert trivy['status'] == 'completed'
+    assert len(trivy['not_applicable_findings']) == 2
+    assert all(f['file'] == 'job.yaml' for f in trivy['not_applicable_findings'])
