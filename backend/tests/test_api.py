@@ -124,3 +124,26 @@ def test_admin_can_reset_daily_quota_and_budget(settings):
     result = client.post("/api/admin/reset-daily-limits", headers={"Authorization": "Bearer " + "a" * 40})
     assert result.status_code == 200
     assert client.get("/api/usage").json()["used_today"] == 0
+
+
+def test_markdown_download_preserves_japanese_with_utf8_bom(client):
+    import codecs
+    ticket = client.post("/api/audits", json={"repository_url": URL}).json()
+    row = client.app.state.store.get(ticket["id"])
+    report = report_base(row)
+    report["summary"] = "日本語の監査結果：設定を確認してください。"
+    client.app.state.store.update(ticket["id"], status="partial", report=report)
+    headers = {"Authorization": "Bearer " + ticket["view_token"]}
+    endpoint = f"/api/audits/{ticket['id']}/download"
+    response = client.get(endpoint + "?format=markdown", headers=headers)
+    assert response.content.startswith(codecs.BOM_UTF8)
+    assert not response.content.startswith(codecs.BOM_UTF8 * 2)
+    assert "charset=utf-8" in response.headers["content-type"]
+    decoded = response.content.decode("utf-8-sig")
+    assert decoded.startswith("# CodeAudit")
+    assert report["summary"] in decoded
+    assert "\ufffd" not in decoded
+    # JSON remains standard UTF-8 without a BOM and is still parseable.
+    json_response = client.get(endpoint + "?format=json", headers=headers)
+    assert not json_response.content.startswith(codecs.BOM_UTF8)
+    assert json_response.json()["summary"] == report["summary"]

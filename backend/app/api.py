@@ -132,7 +132,11 @@ def create_app(settings=None, store=None, dispatcher=None):
         if row["report"] is None:
             raise HTTPException(409, "レポートを準備中です")
         content = markdown(row["report"]) if format == "markdown" else json.dumps(row["report"], ensure_ascii=False, indent=2)
-        ext, mime = ("md", "text/markdown") if format == "markdown" else ("json", "application/json")
+        # A downloaded file loses its HTTP charset in external viewers. BOM makes
+        # UTF-8 Japanese detectable after saving (including Android viewers).
+        if format == "markdown":
+            content = "\ufeff" + content.lstrip("\ufeff")
+        ext, mime = ("md", "text/markdown; charset=utf-8") if format == "markdown" else ("json", "application/json")
         return Response(content, media_type=mime, headers={"Content-Disposition": f'attachment; filename="codeaudit-{audit_id}.{ext}"'})
 
     dist = ROOT / "frontend" / "dist"
