@@ -138,6 +138,10 @@ def create_app(settings=None, store=None, dispatcher=None):
     dist = ROOT / "frontend" / "dist"
     if dist.exists():
         app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+        @app.get("/favicon.svg", include_in_schema=False)
+        async def favicon():
+            return FileResponse(dist / "favicon.svg", media_type="image/svg+xml")
+
         @app.get("/")
         async def home():
             return FileResponse(dist / "index.html")

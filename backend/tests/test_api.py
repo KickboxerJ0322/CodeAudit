@@ -94,6 +94,14 @@ def test_packaged_ui(client):
     response = client.get('/')
     assert response.status_code == 200
     assert 'CodeAudit' in response.text
+    assert 'href="/favicon.svg"' in response.text
+    icon = client.get("/favicon.svg")
+    assert icon.status_code == 200
+    assert icon.headers["content-type"].startswith("image/svg+xml")
+    assert icon.content == (ROOT / "frontend/dist/favicon.svg").read_bytes()
+    assert icon.headers["x-content-type-options"] == "nosniff"
+    # Only the named public icon is exposed, not the whole application directory.
+    assert client.get("/pyproject.toml").status_code == 404
     assert "script-src 'self'" in response.headers['content-security-policy']
 
 def test_daily_reset_requires_admin_secret(settings):
