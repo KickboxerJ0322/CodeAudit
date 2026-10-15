@@ -132,6 +132,7 @@ def test_markdown_download_preserves_japanese_with_utf8_bom(client):
     row = client.app.state.store.get(ticket["id"])
     report = report_base(row)
     report["summary"] = "日本語の監査結果：設定を確認してください。"
+    report["warnings"] = [report["summary"]]
     client.app.state.store.update(ticket["id"], status="partial", report=report)
     headers = {"Authorization": "Bearer " + ticket["view_token"]}
     endpoint = f"/api/audits/{ticket['id']}/download"
