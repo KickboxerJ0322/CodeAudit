@@ -43,8 +43,11 @@ spec:
             - {name: CODEAUDIT_AI_PRICE_CEILING_PER_MILLION, value: '5'}
             - {name: CODEAUDIT_TIMEOUT_SECONDS, value: '780'}
             - {name: CODEAUDIT_JOB_NAME, value: codeaudit-worker}
-            # Public beta intake; limits and viewing-token protection remain enabled.
+            # Audit intake is available to authenticated users.
             - {name: CODEAUDIT_ACCEPTING_AUDITS, value: 'true'}
             - name: CODEAUDIT_IDENTITY_SALT
               valueFrom:
                 secretKeyRef: {name: codeaudit-identity-salt, key: latest}
+            - name: CODEAUDIT_BASIC_AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: codeaudit-basic-auth-password, key: '1'}
