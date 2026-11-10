@@ -27,13 +27,13 @@ export default function AuditView({ ticket }: { ticket: Ticket }) {
     const controller = new AbortController();
     async function poll() {
       try {
-        const r = await fetch(`/api/audits/${ticket.id}`, { headers: { Authorization: `Bearer ${ticket.view_token}` }, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
+        const r = await fetch(`/api/audits/${ticket.id}`, { headers: { "X-CodeAudit-View-Token": ticket.view_token }, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
         if (!r.ok) throw Error(r.status === 404 ? '閲覧期限切れ、または閲覧トークンが無効です。' : '進捗を取得できません。');
         const body: Status = await r.json();
         if (stopped) return;
         setStatus(body); setError('');
         if (['completed', 'partial', 'failed'].includes(body.status)) {
-          const result = await fetch(`/api/audits/${ticket.id}/report`, { headers: { Authorization: `Bearer ${ticket.view_token}` }, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
+          const result = await fetch(`/api/audits/${ticket.id}/report`, { headers: { "X-CodeAudit-View-Token": ticket.view_token }, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
           if (result.ok) { const data: Report = await result.json(); if (!stopped) setReport(data); }
           else if (!stopped) setError('レポートを取得できません。監査状態の説明をご確認ください。');
         } else timer = setTimeout(poll, 2000);
@@ -45,7 +45,7 @@ export default function AuditView({ ticket }: { ticket: Ticket }) {
   async function download(format: 'json' | 'markdown') {
     setDownloading(true);
     try {
-      const response = await fetch(`/api/audits/${ticket.id}/download?format=${format}`, { headers: { Authorization: `Bearer ${ticket.view_token}` }, signal: AbortSignal.timeout(15000) });
+      const response = await fetch(`/api/audits/${ticket.id}/download?format=${format}`, { headers: { "X-CodeAudit-View-Token": ticket.view_token }, signal: AbortSignal.timeout(15000) });
       if (!response.ok) throw Error('ダウンロードできません。閲覧期限を確認してください。');
       const address = URL.createObjectURL(await response.blob());
       const link = document.createElement('a'); link.href = address; link.download = `codeaudit-${ticket.id}.${format === 'json' ? 'json' : 'md'}`; link.click();

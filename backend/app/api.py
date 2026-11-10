@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import os
 import hmac
 import json
 import time
@@ -16,8 +18,21 @@ from app.runner import CloudDispatcher, LocalDispatcher, cleanup_orphans
 from app.store import AdmissionError, TERMINAL, authorize, make_store
 
 
+def request_token(token: str | None, authorization: str | None) -> str:
+    if token is not None:
+        return token
+    # Existing clients can still use Bearer when site authentication is disabled.
+    if authorization and authorization.startswith("Bearer "):
+        return authorization[7:]
+    return ""
+
+
 def create_app(settings=None, store=None, dispatcher=None):
     settings = settings or Settings()
+    password = settings.basic_auth_password.get_secret_value()
+    if not password and (os.environ.get("K_SERVICE") or settings.dispatcher == "cloud_run"):
+        raise RuntimeError("CODEAUDIT_BASIC_AUTH_PASSWORD is required on Cloud Run")
+    basic_credentials = base64.b64encode(f"codeaudit:{password}".encode("utf-8")) if password else None
     store = store or make_store(settings)
     dispatcher = dispatcher or (CloudDispatcher(settings) if settings.dispatcher == "cloud_run" else LocalDispatcher(store, settings))
 
@@ -44,6 +59,17 @@ def create_app(settings=None, store=None, dispatcher=None):
 
     @app.middleware("http")
     async def headers(request, call_next):
+        is_health_probe = request.method == "GET" and request.url.path == "/api/health"
+        if basic_credentials is not None and not is_health_probe:
+            scheme, _, credentials = request.headers.get("authorization", "").partition(" ")
+            if scheme.lower() != "basic" or not hmac.compare_digest(credentials.lstrip().encode("latin-1"), basic_credentials):
+                return Response(
+                    status_code=401,
+                    headers={
+                        "WWW-Authenticate": 'Basic realm="CodeAudit", charset="UTF-8"',
+                        "Cache-Control": "no-store",
+                    },
+                )
         if request.method == "POST" and request.url.path == "/api/audits":
             # Bound requests before JSON parsing, including chunked requests.
             body = bytearray()
@@ -77,13 +103,13 @@ def create_app(settings=None, store=None, dispatcher=None):
         return store.usage(identity)
 
     @app.post("/api/admin/reset-daily-limits")
-    async def reset_daily_limits(request: Request, authorization: str | None = Header(default=None)):
+    async def reset_daily_limits(request: Request, x_codeaudit_admin_token: str | None = Header(default=None), authorization: str | None = Header(default=None)):
         # Disabled until a high-entropy admin credential is configured in Secret Manager.
         secret = settings.admin_reset_token.get_secret_value()
-        candidate = authorization.removeprefix("Bearer ") if authorization and authorization.startswith("Bearer ") else ""
+        candidate = request_token(x_codeaudit_admin_token, authorization)
         if len(secret) < 32:
             raise HTTPException(503, "管理者リセットは未設定です")
-        if len(candidate) > 512 or not hmac.compare_digest(candidate, secret):
+        if len(candidate) > 512 or not hmac.compare_digest(candidate.encode("utf-8"), secret.encode("utf-8")):
             raise HTTPException(403, "管理者認証に失敗しました")
         day = store.reset_daily_limits()
         return {"day_jst": day, "message": "本日の回数とAI予算予約額をリセットしました"}
@@ -103,11 +129,11 @@ def create_app(settings=None, store=None, dispatcher=None):
             raise HTTPException(503, "監査ジョブを起動できませんでした") from exc
         return {"id": row["id"], "view_token": token, "status": row["status"], "expires_at": row["expires_at"]}
 
-    def accessible(audit_id, authorization):
-        if not authorization or not authorization.startswith("Bearer ") or len(authorization) > 200:
+    def accessible(audit_id, token):
+        if not token or len(token) > 193:
             raise HTTPException(404, "監査が見つかりません")
         row = store.get(audit_id)
-        if not authorize(row, authorization[7:]):
+        if not authorize(row, token):
             raise HTTPException(404, "監査が見つかりません")
         if row["status"] not in TERMINAL and row["deadline"] <= time.time():
             store.update(audit_id, status="failed", message="監査時間上限またはワーカー中断により未完了です", steps={k: "failed" if v in {"pending", "running"} else v for k, v in row["steps"].items()})
@@ -115,20 +141,20 @@ def create_app(settings=None, store=None, dispatcher=None):
         return row
 
     @app.get("/api/audits/{audit_id}")
-    async def status(audit_id: str, authorization: str | None = Header(default=None)):
-        row = accessible(audit_id, authorization)
+    async def status(audit_id: str, x_codeaudit_view_token: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+        row = accessible(audit_id, request_token(x_codeaudit_view_token, authorization))
         return {key: row[key] for key in ("id", "repository_url", "status", "created_at", "expires_at", "steps", "message")}
 
     @app.get("/api/audits/{audit_id}/report")
-    async def report(audit_id: str, authorization: str | None = Header(default=None)):
-        row = accessible(audit_id, authorization)
+    async def report(audit_id: str, x_codeaudit_view_token: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+        row = accessible(audit_id, request_token(x_codeaudit_view_token, authorization))
         if row["report"] is None:
             raise HTTPException(409, row["message"] if row["status"] == "failed" else "レポートを準備中です")
         return row["report"]
 
     @app.get("/api/audits/{audit_id}/download")
-    async def download(audit_id: str, format: str = Query(default="json", pattern="^(json|markdown)$"), authorization: str | None = Header(default=None)):
-        row = accessible(audit_id, authorization)
+    async def download(audit_id: str, format: str = Query(default="json", pattern="^(json|markdown)$"), x_codeaudit_view_token: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+        row = accessible(audit_id, request_token(x_codeaudit_view_token, authorization))
         if row["report"] is None:
             raise HTTPException(409, "レポートを準備中です")
         content = markdown(row["report"]) if format == "markdown" else json.dumps(row["report"], ensure_ascii=False, indent=2)

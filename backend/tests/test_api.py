@@ -148,3 +148,45 @@ def test_markdown_download_preserves_japanese_with_utf8_bom(client):
     json_response = client.get(endpoint + "?format=json", headers=headers)
     assert not json_response.content.startswith(codecs.BOM_UTF8)
     assert json_response.json()["summary"] == report["summary"]
+
+def test_cloud_run_requires_basic_auth_password(settings, monkeypatch):
+    monkeypatch.setenv("K_SERVICE", "codeaudit")
+    with pytest.raises(RuntimeError, match="CODEAUDIT_BASIC_AUTH_PASSWORD"):
+        create_app(settings, dispatcher=NoopDispatcher())
+
+
+def test_basic_auth_preserves_audit_and_admin_token_checks(settings):
+    from pydantic import SecretStr
+
+    settings.basic_auth_password = SecretStr("test-password")
+    settings.admin_reset_token = SecretStr("a" * 40)
+    basic = ("codeaudit", "test-password")
+    with TestClient(create_app(settings, dispatcher=NoopDispatcher())) as client:
+        assert client.get("/api/health").status_code == 200
+        for path in ("/", "/assets/app.js", "/docs", "/api/limits"):
+            response = client.get(path)
+            assert response.status_code == 401
+            assert response.headers["www-authenticate"].startswith('Basic realm="CodeAudit"')
+            assert response.headers["cache-control"] == "no-store"
+
+        assert client.post("/api/audits", content="x" * 5000).status_code == 401
+        assert client.get("/api/limits", auth=("codeaudit", "wrong")).status_code == 401
+        created = client.post("/api/audits", auth=basic, json={"repository_url": URL})
+        assert created.status_code == 202
+        ticket = created.json()
+        endpoint = f"/api/audits/{ticket['id']}"
+        assert client.get(endpoint, headers={"Authorization": "Bearer " + ticket["view_token"]}).status_code == 401
+        assert client.get(endpoint, auth=basic).status_code == 404
+        assert client.get(endpoint, auth=basic, headers={"X-CodeAudit-View-Token": "wrong"}).status_code == 404
+
+        store = client.app.state.store
+        store.update(ticket["id"], status="partial", report=report_base(store.get(ticket["id"])))
+        view = {"X-CodeAudit-View-Token": ticket["view_token"]}
+        for suffix in ("", "/report", "/download?format=json", "/download?format=markdown"):
+            assert client.get(endpoint + suffix, auth=basic, headers=view).status_code == 200
+
+        reset = "/api/admin/reset-daily-limits"
+        assert client.post(reset, auth=basic, headers=view).status_code == 403
+        admin = {"X-CodeAudit-Admin-Token": "a" * 40}
+        assert client.post(reset, headers=admin).status_code == 401
+        assert client.post(reset, auth=basic, headers=admin).status_code == 200
